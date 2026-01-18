@@ -2,3 +2,4 @@
 upload/
 package.json
 package-lock.json
+*.zip
