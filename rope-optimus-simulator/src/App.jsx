@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import {
   LineChart,
   Line,
@@ -135,6 +135,459 @@ function buildHistData(counts, edges) {
     });
   }
   return data;
+}
+
+// -----------------------------
+// Egg Physics Hook - For Grip Control Game
+// -----------------------------
+
+const EGG_STATES = {
+  INTACT: 'intact',
+  STRESSED: 'stressed',
+  CRACKED: 'cracked',
+  BROKEN: 'broken',
+};
+
+const BREAK_THRESHOLD = 85; // Pressure above this breaks the egg
+const STRESS_THRESHOLD = 70; // Pressure above this shows stress
+const SAFE_ZONE_MIN = 50;  // Minimum grip to "hold" the egg
+const SAFE_ZONE_MAX = 75;  // Maximum safe grip
+
+function useEggPhysics({ targetGripForce, noiseLevel, animationTime, isEnabled }) {
+  const [eggState, setEggState] = useState(EGG_STATES.INTACT);
+  const [actualPressure, setActualPressure] = useState(0);
+  const [peakPressure, setPeakPressure] = useState(0);
+  const [safeTime, setSafeTime] = useState(0);
+  const [score, setScore] = useState(0);
+  const lastTimeRef = useRef(animationTime);
+  const noiseHistoryRef = useRef([]);
+
+  // Calculate actual pressure with quantization noise
+  const calculatePressure = useCallback(() => {
+    if (!isEnabled || eggState === EGG_STATES.BROKEN) {
+      return targetGripForce;
+    }
+
+    // Noise is based on quantization error (meanRmse)
+    // Lower bits = more noise = harder to control
+    const baseNoise = noiseLevel * 100; // Scale up the noise
+    const timeNoise = Math.sin(animationTime * 15) * 0.3 +
+                      Math.sin(animationTime * 23) * 0.2 +
+                      Math.sin(animationTime * 37) * 0.15;
+    const randomNoise = (Math.random() - 0.5) * 0.4;
+
+    const totalNoise = baseNoise * (timeNoise + randomNoise);
+    const pressure = targetGripForce + totalNoise;
+
+    return clamp(pressure, 0, 100);
+  }, [targetGripForce, noiseLevel, animationTime, isEnabled, eggState]);
+
+  // Update pressure and check for breaks
+  useEffect(() => {
+    if (!isEnabled) return;
+
+    const pressure = calculatePressure();
+    setActualPressure(pressure);
+
+    // Track peak pressure
+    if (pressure > peakPressure) {
+      setPeakPressure(pressure);
+    }
+
+    // Keep noise history for visualization
+    noiseHistoryRef.current.push(pressure);
+    if (noiseHistoryRef.current.length > 50) {
+      noiseHistoryRef.current.shift();
+    }
+
+    // State transitions
+    if (eggState !== EGG_STATES.BROKEN) {
+      if (pressure >= BREAK_THRESHOLD) {
+        setEggState(EGG_STATES.BROKEN);
+      } else if (pressure >= STRESS_THRESHOLD) {
+        setEggState(EGG_STATES.STRESSED);
+      } else if (eggState === EGG_STATES.STRESSED && pressure < STRESS_THRESHOLD - 5) {
+        setEggState(EGG_STATES.INTACT);
+      }
+    }
+
+    // Score calculation - reward time in safe zone
+    const dt = animationTime - lastTimeRef.current;
+    if (dt > 0 && eggState !== EGG_STATES.BROKEN) {
+      if (pressure >= SAFE_ZONE_MIN && pressure <= SAFE_ZONE_MAX) {
+        setSafeTime(t => t + dt);
+        setScore(s => s + Math.floor(dt * 100 * (pressure / 100))); // More points for higher safe grip
+      }
+    }
+    lastTimeRef.current = animationTime;
+  }, [animationTime, isEnabled, calculatePressure, eggState, peakPressure]);
+
+  const resetEgg = useCallback(() => {
+    setEggState(EGG_STATES.INTACT);
+    setActualPressure(0);
+    setPeakPressure(0);
+    setSafeTime(0);
+    noiseHistoryRef.current = [];
+  }, []);
+
+  return {
+    eggState,
+    actualPressure,
+    peakPressure,
+    safeTime,
+    score,
+    noiseHistory: noiseHistoryRef.current,
+    resetEgg,
+    isInSafeZone: actualPressure >= SAFE_ZONE_MIN && actualPressure <= SAFE_ZONE_MAX,
+    BREAK_THRESHOLD,
+    STRESS_THRESHOLD,
+    SAFE_ZONE_MIN,
+    SAFE_ZONE_MAX,
+  };
+}
+
+// -----------------------------
+// Egg SVG Component
+// -----------------------------
+
+const EggObject = ({ state, pressure, stressLevel = 0 }) => {
+  const isStressed = state === EGG_STATES.STRESSED;
+  const isBroken = state === EGG_STATES.BROKEN;
+
+  // Egg deformation based on pressure
+  const squeeze = Math.min(pressure / 100, 0.3) * 0.15;
+  const rx = 28 * (1 + squeeze);
+  const ry = 36 * (1 - squeeze);
+
+  // Vibration when stressed
+  const vibX = isStressed ? Math.sin(Date.now() * 0.05) * 2 : 0;
+  const vibY = isStressed ? Math.cos(Date.now() * 0.07) * 1.5 : 0;
+
+  // Color shift based on stress
+  const stressColor = isStressed ? `rgba(239, 68, 68, ${stressLevel * 0.3})` : 'transparent';
+
+  if (isBroken) {
+    return (
+      <g transform={`translate(${vibX}, ${vibY})`}>
+        {/* Broken egg shell pieces */}
+        <ellipse cx="0" cy="0" rx={rx * 0.6} ry={ry * 0.5} fill="#FEF3C7" opacity="0.6"/>
+
+        {/* Crack lines */}
+        <path d="M -15,-20 L -5,-5 L -18,5 L -8,15" stroke="#92400E" strokeWidth="2" fill="none"/>
+        <path d="M 10,-18 L 5,-3 L 15,8 L 8,20" stroke="#92400E" strokeWidth="2" fill="none"/>
+        <path d="M -8,-15 L 2,0 L -5,12" stroke="#92400E" strokeWidth="1.5" fill="none"/>
+
+        {/* Yolk spilling out */}
+        <ellipse cx="5" cy="10" rx="18" ry="12" fill="#F59E0B" opacity="0.9"/>
+        <ellipse cx="3" cy="8" rx="10" ry="8" fill="#FBBF24"/>
+        <ellipse cx="0" cy="5" rx="5" ry="4" fill="#FCD34D"/>
+
+        {/* Shell fragments */}
+        <path d="M -20,-10 Q -25,-5 -22,5" stroke="#E5E7EB" strokeWidth="3" fill="none"/>
+        <path d="M 18,-8 Q 24,0 20,10" stroke="#E5E7EB" strokeWidth="3" fill="none"/>
+
+        {/* Splatter effect */}
+        <circle cx="-25" cy="15" r="3" fill="#FBBF24" opacity="0.7"/>
+        <circle cx="28" cy="12" r="2" fill="#FBBF24" opacity="0.6"/>
+        <circle cx="-18" cy="25" r="2.5" fill="#FBBF24" opacity="0.5"/>
+      </g>
+    );
+  }
+
+  return (
+    <g transform={`translate(${vibX}, ${vibY})`}>
+      {/* Egg shadow */}
+      <ellipse cx="3" cy="5" rx={rx * 0.9} ry={ry * 0.3} fill="#000" opacity="0.1"/>
+
+      {/* Main egg body */}
+      <ellipse cx="0" cy="0" rx={rx} ry={ry} fill="url(#eggGradientDetailed)"/>
+
+      {/* Stress overlay */}
+      <ellipse cx="0" cy="0" rx={rx - 1} ry={ry - 1} fill={stressColor}/>
+
+      {/* Highlight */}
+      <ellipse cx="-8" cy="-12" rx="8" ry="12" fill="white" opacity="0.4"/>
+      <ellipse cx="-5" cy="-8" rx="4" ry="6" fill="white" opacity="0.3"/>
+
+      {/* Stress cracks (visible when stressed) */}
+      {isStressed && (
+        <g opacity={stressLevel * 0.8}>
+          <path d="M -5,-15 L 0,-5 L -3,5" stroke="#92400E" strokeWidth="0.5" fill="none" strokeDasharray="2,2"/>
+          <path d="M 8,-10 L 5,0 L 10,8" stroke="#92400E" strokeWidth="0.5" fill="none" strokeDasharray="2,2"/>
+        </g>
+      )}
+    </g>
+  );
+};
+
+// -----------------------------
+// Pressure Gauge Component
+// -----------------------------
+
+const PressureGauge = ({ pressure, breakThreshold, stressThreshold, safeMin, safeMax, noiseHistory }) => {
+  const gaugeHeight = 150;
+  const gaugeWidth = 30;
+
+  const pressureY = gaugeHeight - (pressure / 100) * gaugeHeight;
+  const breakY = gaugeHeight - (breakThreshold / 100) * gaugeHeight;
+  const stressY = gaugeHeight - (stressThreshold / 100) * gaugeHeight;
+  const safeMinY = gaugeHeight - (safeMin / 100) * gaugeHeight;
+  const safeMaxY = gaugeHeight - (safeMax / 100) * gaugeHeight;
+
+  // Determine bar color
+  let barColor = '#22C55E'; // Green - safe
+  if (pressure >= breakThreshold) {
+    barColor = '#EF4444'; // Red - broken
+  } else if (pressure >= stressThreshold) {
+    barColor = '#F97316'; // Orange - stress
+  } else if (pressure >= safeMin && pressure <= safeMax) {
+    barColor = '#22C55E'; // Green - safe zone
+  } else {
+    barColor = '#3B82F6'; // Blue - normal
+  }
+
+  return (
+    <svg width="60" height={gaugeHeight + 40} className="overflow-visible">
+      {/* Background */}
+      <rect x="15" y="10" width={gaugeWidth} height={gaugeHeight} rx="4" fill="#1F2937" stroke="#374151"/>
+
+      {/* Safe zone highlight */}
+      <rect x="16" y={safeMaxY + 10} width={gaugeWidth - 2} height={safeMinY - safeMaxY} fill="#22C55E" opacity="0.15"/>
+
+      {/* Danger zone */}
+      <rect x="16" y="10" width={gaugeWidth - 2} height={breakY} fill="#EF4444" opacity="0.1"/>
+
+      {/* Current pressure bar */}
+      <rect x="18" y={pressureY + 10} width={gaugeWidth - 6} height={gaugeHeight - pressureY} rx="2"
+            fill={barColor} style={{transition: 'all 0.05s ease-out'}}/>
+
+      {/* Threshold lines */}
+      <line x1="10" y1={breakY + 10} x2="50" y2={breakY + 10} stroke="#EF4444" strokeWidth="2" strokeDasharray="4,2"/>
+      <line x1="10" y1={stressY + 10} x2="50" y2={stressY + 10} stroke="#F97316" strokeWidth="1" strokeDasharray="3,2"/>
+      <line x1="10" y1={safeMaxY + 10} x2="50" y2={safeMaxY + 10} stroke="#22C55E" strokeWidth="1"/>
+      <line x1="10" y1={safeMinY + 10} x2="50" y2={safeMinY + 10} stroke="#22C55E" strokeWidth="1"/>
+
+      {/* Labels */}
+      <text x="55" y={breakY + 14} fill="#EF4444" fontSize="8" fontFamily="monospace">BREAK</text>
+      <text x="55" y={safeMaxY + 14} fill="#22C55E" fontSize="7" fontFamily="monospace">SAFE</text>
+
+      {/* Current value */}
+      <text x="30" y={gaugeHeight + 30} fill="#E5E7EB" fontSize="12" fontFamily="monospace" textAnchor="middle" fontWeight="bold">
+        {pressure.toFixed(0)}%
+      </text>
+
+      {/* Noise indicator (flickering line showing recent values) */}
+      {noiseHistory && noiseHistory.length > 1 && (
+        <path
+          d={noiseHistory.map((p, i) => {
+            const x = 15 + (i / noiseHistory.length) * gaugeWidth;
+            const y = gaugeHeight - (p / 100) * gaugeHeight + 10;
+            return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
+          }).join(' ')}
+          stroke="#06B6D4"
+          strokeWidth="1"
+          fill="none"
+          opacity="0.5"
+        />
+      )}
+    </svg>
+  );
+};
+
+// -----------------------------
+// Egg Grip Game Component
+// -----------------------------
+
+function EggGripGame({ noiseLevel, bits, isAnimating }) {
+  const [gripForce, setGripForce] = useState(30);
+  const [gameActive, setGameActive] = useState(true);
+  const [showCrackEffect, setShowCrackEffect] = useState(false);
+  const [animTime, setAnimTime] = useState(0);
+  const animRef = useRef(null);
+
+  // Animation loop for the game
+  useEffect(() => {
+    if (gameActive && isAnimating) {
+      const animate = () => {
+        setAnimTime(t => t + 0.016);
+        animRef.current = requestAnimationFrame(animate);
+      };
+      animRef.current = requestAnimationFrame(animate);
+    }
+    return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
+  }, [gameActive, isAnimating]);
+
+  const eggPhysics = useEggPhysics({
+    targetGripForce: gripForce,
+    noiseLevel: noiseLevel,
+    animationTime: animTime,
+    isEnabled: gameActive,
+  });
+
+  // Crack effect when egg breaks
+  useEffect(() => {
+    if (eggPhysics.eggState === EGG_STATES.BROKEN) {
+      setShowCrackEffect(true);
+      setTimeout(() => setShowCrackEffect(false), 500);
+    }
+  }, [eggPhysics.eggState]);
+
+  const handleReset = () => {
+    eggPhysics.resetEgg();
+    setGripForce(30);
+  };
+
+  const stressLevel = eggPhysics.actualPressure >= STRESS_THRESHOLD
+    ? (eggPhysics.actualPressure - STRESS_THRESHOLD) / (BREAK_THRESHOLD - STRESS_THRESHOLD)
+    : 0;
+
+  return (
+    <div className={`relative ${showCrackEffect ? 'animate-pulse' : ''}`}>
+      {/* Crack flash overlay */}
+      {showCrackEffect && (
+        <div className="absolute inset-0 bg-red-500/30 rounded-xl z-10 pointer-events-none"/>
+      )}
+
+      <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
+        <div className="flex justify-between items-center mb-3">
+          <h3 className="text-gray-300 font-medium text-sm flex items-center gap-2">
+            <span className="text-lg">🥚</span> Egg Grip Challenge
+          </h3>
+          <div className="flex items-center gap-2">
+            <span className={`px-2 py-0.5 rounded text-xs font-bold ${
+              eggPhysics.eggState === EGG_STATES.BROKEN ? 'bg-red-500/20 text-red-400' :
+              eggPhysics.isInSafeZone ? 'bg-green-500/20 text-green-400' :
+              'bg-blue-500/20 text-blue-400'
+            }`}>
+              {eggPhysics.eggState === EGG_STATES.BROKEN ? 'CRACKED!' :
+               eggPhysics.isInSafeZone ? 'SAFE' : 'HOLDING'}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex gap-4">
+          {/* Egg visualization */}
+          <div className="flex-1">
+            <svg width="180" height="160" className="bg-slate-950 rounded-lg">
+              <defs>
+                <radialGradient id="eggGradientDetailed" cx="35%" cy="30%" r="65%">
+                  <stop offset="0%" stopColor="#FEF9C3"/>
+                  <stop offset="30%" stopColor="#FEF3C7"/>
+                  <stop offset="60%" stopColor="#FDE68A"/>
+                  <stop offset="100%" stopColor="#F59E0B"/>
+                </radialGradient>
+                <pattern id="gripGrid" width="10" height="10" patternUnits="userSpaceOnUse">
+                  <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#1F2937" strokeWidth="0.5"/>
+                </pattern>
+              </defs>
+              <rect width="180" height="160" fill="url(#gripGrid)"/>
+
+              {/* Hand silhouette (simplified) */}
+              <g transform="translate(90, 85)">
+                {/* Fingers coming from sides based on grip */}
+                {[-1, 1].map((side, i) => {
+                  const fingerGrip = (gripForce / 100) * 25;
+                  return (
+                    <g key={i}>
+                      <rect
+                        x={side * (45 - fingerGrip)}
+                        y="-30"
+                        width="12"
+                        height="60"
+                        rx="6"
+                        fill="#374151"
+                        opacity="0.6"
+                        style={{transition: 'x 0.1s ease-out'}}
+                      />
+                      <rect
+                        x={side * (45 - fingerGrip) + 1}
+                        y="-28"
+                        width="10"
+                        height="56"
+                        rx="5"
+                        fill="url(#optimusShellGradient)"
+                        opacity="0.8"
+                        style={{transition: 'x 0.1s ease-out'}}
+                      />
+                    </g>
+                  );
+                })}
+
+                {/* Egg */}
+                <EggObject
+                  state={eggPhysics.eggState}
+                  pressure={eggPhysics.actualPressure}
+                  stressLevel={stressLevel}
+                />
+              </g>
+
+              {/* Noise level indicator */}
+              <text x="10" y="150" fill="#6B7280" fontSize="8" fontFamily="monospace">
+                Noise: {(noiseLevel * 100).toFixed(1)}% ({bits}-bit)
+              </text>
+            </svg>
+          </div>
+
+          {/* Pressure gauge */}
+          <div className="flex flex-col items-center">
+            <PressureGauge
+              pressure={eggPhysics.actualPressure}
+              breakThreshold={BREAK_THRESHOLD}
+              stressThreshold={STRESS_THRESHOLD}
+              safeMin={SAFE_ZONE_MIN}
+              safeMax={SAFE_ZONE_MAX}
+              noiseHistory={eggPhysics.noiseHistory}
+            />
+          </div>
+        </div>
+
+        {/* Controls */}
+        <div className="mt-4 space-y-3">
+          {/* Grip slider */}
+          <div>
+            <div className="flex justify-between text-xs text-gray-500 mb-1">
+              <span>Grip Strength</span>
+              <span className="font-mono text-cyan-400">{gripForce.toFixed(0)}%</span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={gripForce}
+              onChange={(e) => setGripForce(parseFloat(e.target.value))}
+              disabled={eggPhysics.eggState === EGG_STATES.BROKEN}
+              className="w-full accent-cyan-500 disabled:opacity-50"
+            />
+            <div className="flex justify-between text-[10px] text-gray-600">
+              <span>Release</span>
+              <span className="text-green-500">Safe Zone</span>
+              <span className="text-red-500">Crush</span>
+            </div>
+          </div>
+
+          {/* Stats and reset */}
+          <div className="flex justify-between items-center">
+            <div className="text-xs text-gray-400 space-x-4">
+              <span>Score: <span className="text-cyan-400 font-mono">{eggPhysics.score}</span></span>
+              <span>Peak: <span className="text-orange-400 font-mono">{eggPhysics.peakPressure.toFixed(0)}%</span></span>
+            </div>
+            <button
+              onClick={handleReset}
+              className="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded text-xs text-gray-300 transition-colors"
+            >
+              🔄 New Egg
+            </button>
+          </div>
+
+          {/* Hint */}
+          <div className="text-[10px] text-gray-500 bg-slate-800/50 rounded p-2">
+            💡 <span className="text-cyan-400">Lower bits</span> = more noise = harder to control.
+            Try to keep pressure in the <span className="text-green-400">green zone</span> (50-75%) without breaking!
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // -----------------------------
@@ -1027,8 +1480,8 @@ export default function RoPEOptimusSimulator() {
           </p>
         </div>
 
-        {/* Robot Visualizations */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+        {/* Robot Visualizations - Row 1 */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
           <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
             <div className="flex justify-between items-center mb-3">
               <h3 className="text-gray-300 font-medium text-sm">Arm Manipulation</h3>
@@ -1036,7 +1489,7 @@ export default function RoPEOptimusSimulator() {
             </div>
             <RobotArmVisualization {...robotAngles} showError={true} label="Precision Actuator Control" />
           </div>
-          
+
           <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
             <div className="flex justify-between items-center mb-3">
               <h3 className="text-gray-300 font-medium text-sm">Fine Motor Control</h3>
@@ -1050,13 +1503,63 @@ export default function RoPEOptimusSimulator() {
               <h3 className="text-gray-300 font-medium text-sm">Locomotion Balance</h3>
               <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
             </div>
-            <WalkingVisualization 
-              legAngle={walkingData.legAngle} 
-              hipError={walkingData.hipError} 
-              kneeError={walkingData.kneeError} 
+            <WalkingVisualization
+              legAngle={walkingData.legAngle}
+              hipError={walkingData.hipError}
+              kneeError={walkingData.kneeError}
               step={walkingData.step}
-              showError={true} 
+              showError={true}
             />
+          </div>
+        </div>
+
+        {/* Egg Grip Challenge - Interactive Demo */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+          <EggGripGame
+            noiseLevel={results ? results.statsLog.meanRmse : (9 - bits) * 0.02}
+            bits={bits}
+            isAnimating={isAnimating}
+          />
+
+          {/* Explanation Panel */}
+          <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
+            <h3 className="text-gray-300 font-medium text-sm mb-3 flex items-center gap-2">
+              <span className="text-lg">🎯</span> How Quantization Affects Control
+            </h3>
+            <div className="space-y-3 text-xs text-gray-400">
+              <div className="bg-slate-800/50 rounded p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+                  <span className="font-semibold text-red-400">Low Bits (2-4 bit)</span>
+                </div>
+                <p>Large quantization noise causes unpredictable pressure spikes. The robot "trembles" and can easily crush delicate objects.</p>
+              </div>
+              <div className="bg-slate-800/50 rounded p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                  <span className="font-semibold text-green-400">High Bits (7-8 bit)</span>
+                </div>
+                <p>Minimal noise allows precise control. The robot maintains steady pressure, enabling delicate manipulation tasks.</p>
+              </div>
+              <div className="bg-cyan-900/30 border border-cyan-800/50 rounded p-3">
+                <p className="text-cyan-300">
+                  <strong>RoPE Connection:</strong> The log-space quantization technique reduces error accumulation,
+                  allowing robots to maintain precision even with reduced bit-widths — critical for efficient edge computing.
+                </p>
+              </div>
+              <div className="flex gap-4 mt-3">
+                <div className="flex-1 text-center">
+                  <div className="text-2xl font-mono text-cyan-400">{bits}-bit</div>
+                  <div className="text-[10px] text-gray-500">Current Setting</div>
+                </div>
+                <div className="flex-1 text-center">
+                  <div className="text-2xl font-mono text-orange-400">
+                    {results ? (results.statsLog.meanRmse * 100).toFixed(1) : ((9 - bits) * 2).toFixed(0)}%
+                  </div>
+                  <div className="text-[10px] text-gray-500">Noise Level</div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
