@@ -35,6 +35,113 @@ function pack2x8ToU16(lo, hi) { return (int8ToUint8(lo) | (int8ToUint8(hi) << 8)
 function unpackU16To2x8(p) { return [uint8ToInt8(p & 0xff), uint8ToInt8((p >> 8) & 0xff)]; }
 
 // -----------------------------
+// Hardware Approximation Functions
+// (Tesla Patent US20260017019A1)
+// -----------------------------
+
+// exp() Taylor-5th order with range reduction
+// exp(x) = 2^k * exp(r), where x = k*ln2 + r and |r| <= ln2/2
+function expTaylor5Safe(x) {
+  const LN2 = 0.6931471805599453;
+  const INV_LN2 = 1.4426950408889634;
+
+  const k = Math.round(x * INV_LN2);
+  const r = x - k * LN2;
+
+  const c5 = 1 / 120, c4 = 1 / 24, c3 = 1 / 6, c2 = 1 / 2;
+  const expR = ((((c5 * r + c4) * r + c3) * r + c2) * r + 1) * r + 1;
+
+  const MAX_FLOAT = 3.4028235e+38;
+  const MIN_POSITIVE = 1.1754944e-38;
+
+  if (k > 127) return MAX_FLOAT;
+  if (k < -126) return MIN_POSITIVE;
+
+  return Math.pow(2, k) * expR;
+}
+
+const expTaylor5 = expTaylor5Safe;
+
+// sin/cos LUT-256 with linear interpolation
+const SIN_LUT_SIZE = 256;
+const SIN_LUT = new Float32Array(SIN_LUT_SIZE + 1);
+(function initSinLUT() {
+  for (let i = 0; i <= SIN_LUT_SIZE; i++) {
+    SIN_LUT[i] = Math.sin((i / SIN_LUT_SIZE) * (Math.PI / 2));
+  }
+})();
+
+// sin with LUT-256 + linear interpolation (quadrant symmetry)
+// Max error: ~0.006%
+function sinLUT(x) {
+  // Normalize to [0, 2*PI)
+  const TWO_PI = 2 * Math.PI;
+  x = x - Math.floor(x / TWO_PI) * TWO_PI;
+  if (x < 0) x += TWO_PI;
+
+  // Determine quadrant and compute index
+  const HALF_PI = Math.PI / 2;
+  let quadrant = Math.floor(x / HALF_PI);
+  let t = x - quadrant * HALF_PI;
+
+  // Map to [0, PI/2] based on quadrant
+  if (quadrant === 1 || quadrant === 3) {
+    t = HALF_PI - t;
+  }
+
+  // LUT lookup with linear interpolation
+  const idx = (t / HALF_PI) * SIN_LUT_SIZE;
+  const i0 = Math.floor(idx);
+  const i1 = Math.min(i0 + 1, SIN_LUT_SIZE);
+  const frac = idx - i0;
+  let value = SIN_LUT[i0] * (1 - frac) + SIN_LUT[i1] * frac;
+
+  // Apply sign based on quadrant
+  if (quadrant >= 2) value = -value;
+
+  return value;
+}
+
+function cosLUT(x) {
+  return sinLUT(x + Math.PI / 2);
+}
+
+// Approximation error metrics
+function computeApproxErrors(expMode, trigMode, sampleSize = 1000) {
+  let maxExpErr = 0, maxTrigErr = 0;
+
+  if (expMode === 'taylor5') {
+    for (let i = 0; i < sampleSize; i++) {
+      const x = ((i / sampleSize) * 10) - 5; // Test range [-5, 5]
+      const exact = Math.exp(x);
+      const approx = expTaylor5Safe(x);
+      if (exact > 1e-10 && exact < 1e10) {
+        const err = Math.abs(approx - exact) / exact;
+        maxExpErr = Math.max(maxExpErr, err);
+      }
+    }
+  }
+
+  if (trigMode === 'lut256') {
+    for (let i = 0; i < sampleSize; i++) {
+      const x = (i / sampleSize) * 2 * Math.PI;
+      const exactSin = Math.sin(x);
+      const approxSin = sinLUT(x);
+      const exactCos = Math.cos(x);
+      const approxCos = cosLUT(x);
+      if (Math.abs(exactSin) > 0.01) {
+        maxTrigErr = Math.max(maxTrigErr, Math.abs(approxSin - exactSin) / Math.abs(exactSin));
+      }
+      if (Math.abs(exactCos) > 0.01) {
+        maxTrigErr = Math.max(maxTrigErr, Math.abs(approxCos - exactCos) / Math.abs(exactCos));
+      }
+    }
+  }
+
+  return { maxExpErr, maxTrigErr };
+}
+
+// -----------------------------
 // RoPE / Quantization Logic
 // -----------------------------
 
@@ -1995,6 +2102,9 @@ export default function RoPEOptimusSimulator() {
   const [isAnimating, setIsAnimating] = useState(true);
   const [eggView, setEggView] = useState('svg'); // 'svg' | 'photo' | 'pixi'
   const [noiseMode, setNoiseMode] = useState('mixed'); // 'mixed' | 'naive'
+  const [expMode, setExpMode] = useState('native');   // 'native' | 'taylor5'
+  const [trigMode, setTrigMode] = useState('native'); // 'native' | 'lut256'
+  const [copied, setCopied] = useState(false);
   const animationRef = useRef(null);
   const runIdRef = useRef(0);
   const MAX_SAFE_CELLS = 1_000_000;
@@ -2051,6 +2161,23 @@ export default function RoPEOptimusSimulator() {
     };
   }, [animationTime, results]);
 
+  // Memoize approx errors to avoid recalculating on every render
+  const approxErrors = useMemo(
+    () => computeApproxErrors(expMode, trigMode),
+    [expMode, trigMode]
+  );
+
+  // Config fingerprint for reproducibility
+  const configFingerprint = useMemo(() => {
+    return `seqLen=${seqLen} dim=${dim} base=${base} bits=${bits} quantMode=${quantMode} seed=${seed} expMode=${expMode} trigMode=${trigMode} showNaive=${showNaive} usePackDemo=${usePackDemo}`;
+  }, [seqLen, dim, base, bits, quantMode, seed, expMode, trigMode, showNaive, usePackDemo]);
+
+  const copyFingerprint = useCallback(() => {
+    navigator.clipboard.writeText(configFingerprint);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [configFingerprint]);
+
   const runSimulation = async () => {
     const runId = ++runIdRef.current;
     setIsRunning(true);
@@ -2106,12 +2233,13 @@ export default function RoPEOptimusSimulator() {
           if (pos > 0) {
             const logTheta = logPos + logInvFreq[i];
             qLog = quantizeSigned(logTheta, scalesLog[i], qmaxLog);
-            thetaHatLog = Math.exp(qLog * scalesLog[i]);
+            const expArg = qLog * scalesLog[i];
+            thetaHatLog = expMode === 'taylor5' ? expTaylor5(expArg) : Math.exp(expArg);
           }
           if (usePackDemo) qLogTmp[i] = qLog;
 
-          const cosHatLog = Math.cos(thetaHatLog);
-          const sinHatLog = Math.sin(thetaHatLog);
+          const cosHatLog = trigMode === 'lut256' ? cosLUT(thetaHatLog) : Math.cos(thetaHatLog);
+          const sinHatLog = trigMode === 'lut256' ? sinLUT(thetaHatLog) : Math.sin(thetaHatLog);
           const yHatEven = xEven * cosHatLog - xOdd * sinHatLog;
           const yHatOdd = xEven * sinHatLog + xOdd * cosHatLog;
           
@@ -2129,8 +2257,8 @@ export default function RoPEOptimusSimulator() {
           if (showNaive) {
             const qTheta = quantizeSigned(thetaRef, scalesTheta[i], qmaxTheta);
             const thetaHat = qTheta * scalesTheta[i];
-            const cosHat = Math.cos(thetaHat);
-            const sinHat = Math.sin(thetaHat);
+            const cosHat = trigMode === 'lut256' ? cosLUT(thetaHat) : Math.cos(thetaHat);
+            const sinHat = trigMode === 'lut256' ? sinLUT(thetaHat) : Math.sin(thetaHat);
             const ynE = xEven * cosHat - xOdd * sinHat;
             const ynO = xEven * sinHat + xOdd * cosHat;
             sumSqNaive += (ynE - yRefEven) ** 2 + (ynO - yRefOdd) ** 2;
@@ -2438,6 +2566,59 @@ export default function RoPEOptimusSimulator() {
                   <span className="text-cyan-400 font-mono font-bold text-sm w-12">{bits}-bit</span>
                 </div>
               </div>
+              <div>
+                <label className="text-[10px] text-gray-500 uppercase tracking-wider">Random Seed</label>
+                <input
+                  type="number"
+                  value={seed}
+                  onChange={e => setSeed(parseInt(e.target.value) || 42)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-sm text-white mt-1"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-500 uppercase tracking-wider">Hardware Approximation</label>
+                <div className="grid grid-cols-2 gap-2 mt-1">
+                  <select
+                    value={expMode}
+                    onChange={e => setExpMode(e.target.value)}
+                    className="bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white"
+                  >
+                    <option value="native">exp() Native</option>
+                    <option value="taylor5">exp() Taylor-5</option>
+                  </select>
+                  <select
+                    value={trigMode}
+                    onChange={e => setTrigMode(e.target.value)}
+                    className="bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white"
+                  >
+                    <option value="native">sin/cos Native</option>
+                    <option value="lut256">sin/cos LUT-256</option>
+                  </select>
+                </div>
+              </div>
+              <div className="border-t border-slate-700 pt-3 mt-3">
+                <label className="text-[10px] text-gray-500 uppercase tracking-wider">Options</label>
+                <div className="flex items-center gap-2 mt-2">
+                  <input
+                    type="checkbox"
+                    id="showNaive"
+                    checked={showNaive}
+                    onChange={e => setShowNaive(e.target.checked)}
+                    className="accent-cyan-500"
+                  />
+                  <label htmlFor="showNaive" className="text-xs text-gray-400">Show Naive Comparison</label>
+                </div>
+                <div className="flex items-center gap-2 mt-1">
+                  <input
+                    type="checkbox"
+                    id="usePackDemo"
+                    checked={usePackDemo}
+                    onChange={e => setUsePackDemo(e.target.checked)}
+                    className="accent-cyan-500"
+                  />
+                  <label htmlFor="usePackDemo" className="text-xs text-gray-400">Pack/Unpack Demo</label>
+                </div>
+              </div>
               <button onClick={runSimulation} disabled={isRunning} 
                 className={`w-full py-2.5 rounded-lg font-bold text-sm tracking-wide transition-all ${
                   isRunning ? 'bg-slate-700 text-slate-500' : 'bg-cyan-600 hover:bg-cyan-500 text-white'
@@ -2457,10 +2638,12 @@ export default function RoPEOptimusSimulator() {
               <>
                 {/* Stats Cards */}
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-gradient-to-br from-slate-900 to-cyan-950/30 border border-cyan-900/30 rounded-xl p-4">
+                  <div className={`bg-gradient-to-br ${expMode !== 'native' || trigMode !== 'native' ? 'from-slate-900 to-purple-950/30 border-purple-900/30' : 'from-slate-900 to-cyan-950/30 border-cyan-900/30'} border rounded-xl p-4`}>
                     <div className="flex items-center gap-2 mb-2">
-                      <div className="w-2 h-2 bg-cyan-400 rounded-full"></div>
-                      <h4 className="text-cyan-400 font-bold text-sm">Mixed-Precision (Log/Exp)</h4>
+                      <div className={`w-2 h-2 ${expMode !== 'native' || trigMode !== 'native' ? 'bg-purple-400' : 'bg-cyan-400'} rounded-full`}></div>
+                      <h4 className={`${expMode !== 'native' || trigMode !== 'native' ? 'text-purple-400' : 'text-cyan-400'} font-bold text-sm`}>
+                        Mixed-Precision (Log/Exp){(expMode !== 'native' || trigMode !== 'native') && ' + HW Approx'}
+                      </h4>
                     </div>
                     <div className="text-3xl font-mono text-white mb-1">{results.statsLog.meanRmse.toExponential(2)}</div>
                     <div className="text-xs text-gray-500">Mean RMSE | Drift: {results.statsLog.drift.toFixed(2)}x</div>
@@ -2483,6 +2666,13 @@ export default function RoPEOptimusSimulator() {
                   <span className="text-cyan-300 font-mono">
                     {results.packMatchRate === null ? '—' : `${(results.packMatchRate * 100).toFixed(0)}%`}
                   </span>
+                  {(expMode !== 'native' || trigMode !== 'native') && (
+                    <span className="ml-4 text-purple-300">
+                      HW Approx: {expMode === 'taylor5' && <span>exp poly err (|r|≤0.35): {approxErrors.maxExpErr.toExponential(2)}</span>}
+                      {expMode === 'taylor5' && trigMode === 'lut256' && ' | '}
+                      {trigMode === 'lut256' && <span>trig err: {approxErrors.maxTrigErr.toExponential(2)}</span>}
+                    </span>
+                  )}
                 </div>
 
                 {/* Chart */}
@@ -2498,7 +2688,15 @@ export default function RoPEOptimusSimulator() {
                         formatter={(v) => [Number(v).toExponential(4), '']}
                       />
                       <Legend />
-                      <Line type="monotone" dataKey="logExp" name="Mixed-Precision" stroke="#22D3EE" strokeWidth={2} dot={false} />
+                      <Line
+                        type="monotone"
+                        dataKey="logExp"
+                        name={expMode !== 'native' || trigMode !== 'native' ? 'Mixed-Precision (HW Approx)' : 'Mixed-Precision'}
+                        stroke={expMode !== 'native' || trigMode !== 'native' ? '#A855F7' : '#22D3EE'}
+                        strokeWidth={2}
+                        strokeDasharray={expMode !== 'native' || trigMode !== 'native' ? '5 5' : undefined}
+                        dot={false}
+                      />
                       {showNaive && <Line type="monotone" dataKey="naive" name="Naive" stroke="#F97316" strokeWidth={2} dot={false} />}
                     </LineChart>
                   </ResponsiveContainer>
@@ -2524,6 +2722,22 @@ export default function RoPEOptimusSimulator() {
             <div>
               <span className="text-cyan-300">卵を持つ</span> → 繊細な力加減には高精度な角度制御が必須
             </div>
+          </div>
+        </div>
+
+        {/* Config Fingerprint */}
+        <div className="mt-4 bg-slate-900/30 border border-slate-800 rounded-lg p-3">
+          <div className="flex items-center justify-between">
+            <div className="text-[10px] text-gray-500 uppercase tracking-wider">Config Fingerprint</div>
+            <button
+              onClick={copyFingerprint}
+              className="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
+            >
+              {copied ? '✅ Copied!' : '📋 Copy'}
+            </button>
+          </div>
+          <div className="mt-1 font-mono text-[10px] text-gray-400 break-all select-all">
+            {configFingerprint}
           </div>
         </div>
       </div>
