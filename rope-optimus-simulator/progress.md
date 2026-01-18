@@ -5,7 +5,7 @@ AIがセッション間で状態を継承するための短期メモリ。
 
 ## Current objective
 
-- P1タスク（A〜E）完了。次フェーズ（Task F: exp近似切替機能）待ち
+- Task F: exp近似切替機能 完了
 
 ## Current plan reference
 
@@ -19,7 +19,7 @@ AIがセッション間で状態を継承するための短期メモリ。
 
 - npm test: 19 tests passed
 - npm run build: ビルド成功
-- Task C: SVG id一意化（useId適用）完了
+- Task F: exp近似切替機能実装完了
 
 ## Known issues / blockers
 
@@ -32,6 +32,11 @@ AIがセッション間で状態を継承するための短期メモリ。
 - 3つのビューモード: SVG Mode, Photo Mode, Pixi Mode
 - Pixi ModeはDisplacementFilterで指変形を実現
 - EggObjectはReact.useId()で自己完結したgradient IDを持つ
+- Hardware Approximation機能追加:
+  - exp() Taylor-5次近似（Horner形式）
+  - sin/cos LUT-256（線形補間付き）
+  - 精度メトリクス表示（HW Approx有効時）
+  - チャート視覚的インジケータ（紫色破線）
 
 ---
 

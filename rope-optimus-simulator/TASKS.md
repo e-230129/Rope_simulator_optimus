@@ -8,10 +8,7 @@
 
 ## Next（次にやる・P2）
 
-- [ ] Task F: exp近似切替機能（将来フェーズ）
-  - Math.exp → Taylor/Horner近似のON/OFF
-  - Math.sin/cos → LUT+補間のON/OFF
-  - 特許の「ハードウェア近似」をより忠実に再現
+- なし
 
 ## Blocked（ブロック中）
 
@@ -19,6 +16,12 @@
 
 ## Done（最近完了）
 
+- [x] Task F: exp近似切替機能
+  - Math.exp → Taylor-5次近似（Horner形式）のON/OFF
+  - Math.sin/cos → LUT-256（線形補間付き）のON/OFF
+  - Hardware Approximationセレクタ追加
+  - 精度メトリクス表示（HW Approx有効時）
+  - チャートの視覚的インジケータ（紫色破線）
 - [x] Task A: ヒストグラム修正（Codex担当）
 - [x] Task B: 状態整理（Claude Code担当）
 - [x] Task C: SVG id一意化・useId適用（Claude Code担当）
