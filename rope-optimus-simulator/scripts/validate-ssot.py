@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-SSOT.md と plan.md のリンク切れを検証する。
+Validate broken links in SSOT.md and plan.md.
 
-機能:
-- SSOT.md 内のローカルMarkdownリンク存在検証
-- plan.md のポインタ先存在検証
-- 必須ファイルの存在検証
+Features:
+- Verify local Markdown links in SSOT.md exist
+- Verify plan.md pointer target exists
+- Verify required files exist
 
 Exit code:
   0: OK
-  1: 不整合あり
-  2: SSOT.md が見つからない
+  1: Inconsistencies found
+  2: SSOT.md not found
 """
 from __future__ import annotations
 
@@ -31,14 +31,14 @@ REQUIRED_FILES = [
 
 
 def is_local_path(target: str) -> bool:
-    """URLやアンカーを除外"""
+    """Exclude URLs and anchors."""
     if target.startswith(("http://", "https://", "mailto:", "#")):
         return False
     return True
 
 
 def check_links(md_path: Path, base_dir: Path, verbose: bool = False) -> list[str]:
-    """Markdownファイル内のローカルリンクを検証"""
+    """Validate local links inside a Markdown file."""
     errors = []
     if not md_path.exists():
         return [f"File not found: {md_path}"]
@@ -47,12 +47,12 @@ def check_links(md_path: Path, base_dir: Path, verbose: bool = False) -> list[st
     links = RE_MD_LINK.findall(content)
     
     for link in links:
-        # アンカー部分を除去
+        # Strip anchor portion
         link_path = link.split("#")[0]
         if not link_path or not is_local_path(link_path):
             continue
         
-        # 相対パスを解決
+        # Resolve relative path
         target = (md_path.parent / link_path).resolve()
         
         if not target.exists():
@@ -64,7 +64,7 @@ def check_links(md_path: Path, base_dir: Path, verbose: bool = False) -> list[st
 
 
 def check_plan_pointer(plan_path: Path, base_dir: Path) -> list[str]:
-    """plan.md の1行目がポインタとして有効か検証"""
+    """Validate that plan.md line 1 is a valid pointer."""
     errors = []
     if not plan_path.exists():
         return [f"plan.md not found"]
@@ -87,7 +87,7 @@ def check_plan_pointer(plan_path: Path, base_dir: Path) -> list[str]:
 
 
 def check_required_files(base_dir: Path) -> list[str]:
-    """必須ファイルの存在を検証"""
+    """Verify required files exist."""
     errors = []
     for fname in REQUIRED_FILES:
         if not (base_dir / fname).exists():
@@ -100,7 +100,7 @@ def main():
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     args = parser.parse_args()
 
-    # プロジェクトルートを探す
+    # Find project root
     base_dir = Path.cwd()
     ssot_path = base_dir / "SSOT.md"
     
@@ -110,17 +110,17 @@ def main():
     
     all_errors = []
     
-    # 必須ファイルチェック
+    # Required file check
     if args.verbose:
         print("Checking required files...")
     all_errors.extend(check_required_files(base_dir))
     
-    # SSOT.md のリンクチェック
+    # SSOT.md link check
     if args.verbose:
         print("Checking SSOT.md links...")
     all_errors.extend(check_links(ssot_path, base_dir, args.verbose))
     
-    # plan.md のポインタチェック
+    # plan.md pointer check
     if args.verbose:
         print("Checking plan.md pointer...")
     all_errors.extend(check_plan_pointer(base_dir / "plan.md", base_dir))

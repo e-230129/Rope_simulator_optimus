@@ -1,36 +1,36 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('RoPE Optimus Simulator', () => {
-  test('ページが正しく読み込まれる', async ({ page }) => {
+  test('Page loads correctly', async ({ page }) => {
     await page.goto('/');
 
-    // ページタイトルを確認
+    // Check page title
     await expect(page).toHaveTitle(/RoPE|Optimus|Simulator/i);
   });
 
-  test('メインコンテンツが表示される', async ({ page }) => {
+  test('Main content is visible', async ({ page }) => {
     await page.goto('/');
 
-    // アプリのルート要素が存在することを確認
+    // Verify app root element exists
     const root = page.locator('#root');
     await expect(root).toBeVisible();
   });
 
-  test('チャートが表示される', async ({ page }) => {
+  test('Chart is visible', async ({ page }) => {
     await page.goto('/');
 
-    // Rechartsのコンテナが存在することを確認
+    // Verify Recharts container exists
     const chart = page.locator('.recharts-wrapper').first();
     await expect(chart).toBeVisible({ timeout: 10000 });
   });
 
-  test('スクリーンショットを撮影', async ({ page }) => {
+  test('Take screenshot', async ({ page }) => {
     await page.goto('/');
 
-    // ページが完全に読み込まれるのを待つ
+    // Wait for page to fully load
     await page.waitForSelector('#root');
 
-    // スクリーンショットを保存
+    // Save screenshot
     await page.screenshot({ path: 'tests/screenshots/app.png', fullPage: true });
   });
 });

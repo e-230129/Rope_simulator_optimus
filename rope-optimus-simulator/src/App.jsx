@@ -260,12 +260,12 @@ const BREAK_THRESHOLD = 85; // Pressure above this breaks the egg
 const STRESS_THRESHOLD = 70; // Pressure above this shows stress
 const SAFE_ZONE_MIN = 50;  // Minimum grip to "hold" the egg
 const SAFE_ZONE_MAX = 75;  // Maximum safe grip
-const DROP_TIME_TO_BREAK = 0.35; // 秒 - SAFE_ZONE_MIN未満が続くと落下
+const DROP_TIME_TO_BREAK = 0.35; // seconds - drop if below SAFE_ZONE_MIN for too long
 
 function useEggPhysics({
   targetGripForce,
-  noiseLevel,      // mixed (log/exp) の RMSE
-  naiveNoiseLevel, // naive の RMSE（オプション）
+  noiseLevel,      // mixed (log/exp) RMSE
+  naiveNoiseLevel, // naive RMSE (optional)
   noiseMode = 'mixed', // 'mixed' | 'naive'
   animationTime,
   isEnabled
@@ -280,10 +280,10 @@ function useEggPhysics({
   const lastTimeRef = useRef(animationTime);
   const noiseHistoryRef = useRef([]);
 
-  // 使用するノイズレベルを切替（ゲーム用に上限を設定）
-  const MAX_GAME_NOISE = 0.15; // 最大15%に制限してプレイ可能に
+  // Switch noise level (cap for gameplay)
+  const MAX_GAME_NOISE = 0.15; // Cap at 15% to keep it playable
   const rawNoise = noiseMode === 'naive'
-    ? (naiveNoiseLevel ?? noiseLevel * 1.5) // naive は mixed の1.5倍（デフォルト）
+    ? (naiveNoiseLevel ?? noiseLevel * 1.5) // naive is 1.5x mixed (default)
     : noiseLevel;
   const effectiveNoise = Math.min(rawNoise, MAX_GAME_NOISE);
 
@@ -332,7 +332,7 @@ function useEggPhysics({
 
     // State transitions
     if (eggState !== EGG_STATES.BROKEN) {
-      // Crush判定：圧力が高すぎると潰れる
+      // Crush check: pressure too high breaks the egg
       if (pressure >= BREAK_THRESHOLD) {
         setEggState(EGG_STATES.BROKEN);
         setBreakReason('crush');
@@ -342,7 +342,7 @@ function useEggPhysics({
         setEggState(EGG_STATES.INTACT);
       }
 
-      // Drop判定：SAFE_ZONE_MIN未満が一定時間続くと落下
+      // Drop check: below SAFE_ZONE_MIN for too long
       if (pressure < SAFE_ZONE_MIN) {
         setWeakDuration(prev => {
           const newDuration = prev + dt;
@@ -372,7 +372,7 @@ function useEggPhysics({
     setSafeTime(0);
     setWeakDuration(0);
     setBreakReason(null);
-    setScore(0);  // スコアもリセット
+    setScore(0);  // Reset score too
     noiseHistoryRef.current = [];
   }, []);
 
@@ -401,7 +401,7 @@ function useEggPhysics({
 // -----------------------------
 
 const EggObject = ({ state, pressure, stressLevel = 0, animationTime = 0 }) => {
-  // ユニークなgradient IDを生成（SVG id衝突を回避）
+  // Generate a unique gradient ID (avoid SVG id collisions)
   const gradientId = React.useId();
   const eggGradientId = `eggGradient${gradientId}`;
 
@@ -450,7 +450,7 @@ const EggObject = ({ state, pressure, stressLevel = 0, animationTime = 0 }) => {
 
   return (
     <g transform={`translate(${vibX}, ${vibY})`}>
-      {/* 自己完結したgradient定義 */}
+      {/* Self-contained gradient definition */}
       <defs>
         <radialGradient id={eggGradientId} cx="35%" cy="30%" r="65%">
           <stop offset="0%" stopColor="#FEF9C3"/>
@@ -497,7 +497,7 @@ function PixiPhotoHand({ gripForce, eggState, breakReason, animationTime, onRese
   const [isLoaded, setIsLoaded] = useState(false);
   const [error, setError] = useState(null);
 
-  // Pixi.js アプリケーションの初期化
+  // Initialize Pixi.js application
   useEffect(() => {
     let app = null;
     let destroyed = false;
@@ -510,7 +510,7 @@ function PixiPhotoHand({ gripForce, eggState, breakReason, animationTime, onRese
       }
 
       try {
-        // Canvas サイズを取得
+        // Get canvas size
         const rect = canvas.getBoundingClientRect();
         const width = rect.width || 800;
         const height = rect.height || 450;
@@ -533,7 +533,7 @@ function PixiPhotoHand({ gripForce, eggState, breakReason, animationTime, onRese
 
         pixiAppRef.current = app;
 
-        // 画像をロード
+        // Load image
         const handTexture = await PIXI.Assets.load('/tesla-optimus-hands.jpg');
 
         if (destroyed) {
@@ -541,10 +541,10 @@ function PixiPhotoHand({ gripForce, eggState, breakReason, animationTime, onRese
           return;
         }
 
-        // Sprite を作成
+        // Create sprite
         const sprite = new PIXI.Sprite(handTexture);
 
-        // スケール調整してキャンバスにフィット
+        // Scale to fit canvas
         const scale = Math.min(
           app.screen.width / sprite.texture.width,
           app.screen.height / sprite.texture.height
@@ -553,20 +553,20 @@ function PixiPhotoHand({ gripForce, eggState, breakReason, animationTime, onRese
         sprite.x = (app.screen.width - sprite.texture.width * scale) / 2;
         sprite.y = (app.screen.height - sprite.texture.height * scale) / 2;
 
-        // DisplacementFilter 用のノイズテクスチャを作成
+        // Create noise texture for DisplacementFilter
         const displacementCanvas = document.createElement('canvas');
         displacementCanvas.width = 256;
         displacementCanvas.height = 256;
         const ctx = displacementCanvas.getContext('2d');
 
-        // グラデーション（中心から外側へ）を作成
+        // Create gradient (center to edge)
         const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
         gradient.addColorStop(0, 'rgb(128, 128, 128)');
         gradient.addColorStop(1, 'rgb(128, 128, 128)');
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, 256, 256);
 
-        // 指のある領域に変位パターンを描く
+        // Draw displacement pattern over finger area
         ctx.fillStyle = 'rgb(180, 140, 128)';
         ctx.beginPath();
         ctx.ellipse(160, 180, 60, 80, 0, 0, Math.PI * 2);
@@ -576,7 +576,7 @@ function PixiPhotoHand({ gripForce, eggState, breakReason, animationTime, onRese
         const displacementSprite = new PIXI.Sprite(displacementTexture);
         displacementSprite.texture.source.addressMode = 'clamp';
 
-        // DisplacementFilterを作成
+        // Create DisplacementFilter
         const displacementFilter = new PIXI.DisplacementFilter({
           sprite: displacementSprite,
           scale: 0,
@@ -598,7 +598,7 @@ function PixiPhotoHand({ gripForce, eggState, breakReason, animationTime, onRese
       }
     };
 
-    // DOMが準備されるまで少し待つ
+    // Wait briefly for the DOM to be ready
     const timer = setTimeout(init, 100);
 
     return () => {
@@ -611,21 +611,21 @@ function PixiPhotoHand({ gripForce, eggState, breakReason, animationTime, onRese
     };
   }, []);
 
-  // DisplacementFilter: gripForceに応じて変形
+  // DisplacementFilter: deform based on gripForce
   useEffect(() => {
     const filter = filterRef.current;
     if (!filter || !isLoaded) return;
 
-    // grip force を 0.0~1.0 に正規化
+    // Normalize grip force to 0.0-1.0
     const force = Math.min(Math.max(gripForce / 100, 0), 1);
 
-    // 変位量を設定（握力が強いほど変形）
+    // Set displacement (stronger grip = more deformation)
     const displacement = force * 30;
     filter.scale.x = displacement;
     filter.scale.y = displacement * 0.5;
   }, [gripForce, isLoaded]);
 
-  // エラー時のフォールバック
+  // Fallback on error
   if (error) {
     return (
       <div className="w-full aspect-video bg-slate-800 rounded-xl flex items-center justify-center text-gray-400">
@@ -656,9 +656,9 @@ function PixiPhotoHand({ gripForce, eggState, breakReason, animationTime, onRese
           }}
         >
           {eggState === 'broken' ? (
-            // 割れた卵 - 黄身がぐしゃっと垂れる
+            // Broken egg - yolk oozes out
             <div className="relative">
-              {/* メインの黄身（潰れた形） */}
+              {/* Main yolk (squashed shape) */}
               <div
                 className="bg-yellow-500 opacity-90"
                 style={{
@@ -668,7 +668,7 @@ function PixiPhotoHand({ gripForce, eggState, breakReason, animationTime, onRese
                   boxShadow: '0 0 15px rgba(234, 179, 8, 0.8)',
                 }}
               />
-              {/* 垂れる黄身1 */}
+              {/* Dripping yolk 1 */}
               <div
                 className="absolute bg-yellow-500 opacity-85"
                 style={{
@@ -680,7 +680,7 @@ function PixiPhotoHand({ gripForce, eggState, breakReason, animationTime, onRese
                   background: 'linear-gradient(to bottom, #eab308 0%, #ca8a04 100%)',
                 }}
               />
-              {/* 垂れる黄身2 */}
+              {/* Dripping yolk 2 */}
               <div
                 className="absolute bg-yellow-500 opacity-85"
                 style={{
@@ -692,7 +692,7 @@ function PixiPhotoHand({ gripForce, eggState, breakReason, animationTime, onRese
                   background: 'linear-gradient(to bottom, #eab308 0%, #ca8a04 100%)',
                 }}
               />
-              {/* 垂れる黄身3 */}
+              {/* Dripping yolk 3 */}
               <div
                 className="absolute bg-yellow-500 opacity-80"
                 style={{
@@ -704,7 +704,7 @@ function PixiPhotoHand({ gripForce, eggState, breakReason, animationTime, onRese
                   background: 'linear-gradient(to bottom, #eab308 0%, #ca8a04 100%)',
                 }}
               />
-              {/* 殻の破片（白） */}
+              {/* Shell fragments (white) */}
               <div
                 className="absolute bg-amber-100 opacity-70"
                 style={{
@@ -729,21 +729,21 @@ function PixiPhotoHand({ gripForce, eggState, breakReason, animationTime, onRese
               />
             </div>
           ) : eggState === 'stressed' ? (
-            // ヒビが入った卵
+            // Cracked egg
             <div
               className="relative w-12 h-16 transition-all duration-150"
               style={{
                 transform: `scale(${1 - (gripForce / 100) * 0.15})`,
               }}
             >
-              {/* 卵本体 */}
+              {/* Egg body */}
               <div
                 className="w-full h-full bg-gradient-to-b from-amber-100 to-amber-200 border-2 border-amber-300"
                 style={{
                   borderRadius: '50% 50% 50% 50% / 60% 60% 40% 40%',
                 }}
               />
-              {/* ヒビ1 - メイン */}
+              {/* Crack 1 - main */}
               <svg
                 className="absolute inset-0 w-full h-full"
                 viewBox="0 0 48 64"
@@ -757,7 +757,7 @@ function PixiPhotoHand({ gripForce, eggState, breakReason, animationTime, onRese
                 <path d="M26 24 L32 22" />
                 <path d="M18 32 L12 36" />
               </svg>
-              {/* ヒビ2 - サブ */}
+              {/* Crack 2 - secondary */}
               <svg
                 className="absolute inset-0 w-full h-full"
                 viewBox="0 0 48 64"
@@ -772,7 +772,7 @@ function PixiPhotoHand({ gripForce, eggState, breakReason, animationTime, onRese
               </svg>
             </div>
           ) : (
-            // 正常な卵
+            // Intact egg
             <div
               className="w-12 h-16 bg-gradient-to-b from-amber-100 to-amber-200 border-2 border-amber-300 transition-all duration-150"
               style={{
@@ -933,13 +933,13 @@ function PixiEggGripGame({ noiseLevel, naiveNoiseLevel, noiseMode = 'mixed', bit
 // -----------------------------
 
 function PhotoEggGripGame({ noiseLevel, naiveNoiseLevel, noiseMode = 'mixed', bits, isAnimating }) {
-  const [gripForce, setGripForce] = useState(60); // 初期値を安全ゾーン内に
+  const [gripForce, setGripForce] = useState(60); // Initial value within safe zone
   const [gameActive, setGameActive] = useState(true);
   const [showCrackEffect, setShowCrackEffect] = useState(false);
   const [animTime, setAnimTime] = useState(0);
   const animRef = useRef(null);
 
-  // 卵の位置（画像サイズ 1920x1080 基準で調整）
+  // Egg position (tuned for 1920x1080 image)
   const EGG_X = 920;
   const EGG_Y = 580;
   const EGG_SCALE = 1.2;
@@ -975,7 +975,7 @@ function PhotoEggGripGame({ noiseLevel, naiveNoiseLevel, noiseMode = 'mixed', bi
 
   const handleReset = () => {
     eggPhysics.resetEgg();
-    setGripForce(60); // 安全ゾーン内にリセット
+    setGripForce(60); // Reset to within safe zone
   };
 
   const { eggState, actualPressure, breakReason, weakDuration, DROP_TIME_TO_BREAK } = eggPhysics;
@@ -1221,7 +1221,7 @@ const PressureGauge = ({ pressure, breakThreshold, stressThreshold, safeMin, saf
 // -----------------------------
 
 function EggGripGame({ noiseLevel, naiveNoiseLevel, noiseMode = 'mixed', bits, isAnimating }) {
-  const [gripForce, setGripForce] = useState(60); // 初期値を安全ゾーン内に
+  const [gripForce, setGripForce] = useState(60); // Initial value within safe zone
   const [gameActive, setGameActive] = useState(true);
   const [showCrackEffect, setShowCrackEffect] = useState(false);
   const [animTime, setAnimTime] = useState(0);
@@ -1258,7 +1258,7 @@ function EggGripGame({ noiseLevel, naiveNoiseLevel, noiseMode = 'mixed', bits, i
 
   const handleReset = () => {
     eggPhysics.resetEgg();
-    setGripForce(60); // 安全ゾーン内にリセット
+    setGripForce(60); // Reset to within safe zone
   };
 
   const stressLevel = eggPhysics.actualPressure >= STRESS_THRESHOLD
@@ -1294,7 +1294,7 @@ function EggGripGame({ noiseLevel, naiveNoiseLevel, noiseMode = 'mixed', bits, i
           <div className="flex-1">
             <svg width="180" height="160" className="bg-slate-950 rounded-lg">
               <defs>
-                {/* eggGradientDetailed は EggObject 内で自己定義（useId使用） */}
+                {/* eggGradientDetailed is defined inside EggObject (uses useId) */}
                 <pattern id="gripGrid" width="10" height="10" patternUnits="userSpaceOnUse">
                   <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#1F2937" strokeWidth="0.5"/>
                 </pattern>
@@ -1467,7 +1467,7 @@ const SvgDefs = () => (
       <stop offset="100%" stopColor="#D97706" />
     </radialGradient>
 
-    {/* eggGradientDetailed は EggObject 内で useId() により自己定義 */}
+    {/* eggGradientDetailed is defined inside EggObject (uses useId()) */}
 
     {/* Gold Joint Band Gradient - Like Tesla Optimus finger joints */}
     <linearGradient id="goldJointGradient" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -1759,9 +1759,9 @@ function RobotArmVisualization({
       <div className="mt-3 bg-slate-900/50 rounded-lg p-2 w-full">
         <div className="grid grid-cols-3 gap-2 text-xs">
           {[
-            { name: '肩', angle: shoulderAngle, error: shoulderError },
-            { name: '肘', angle: elbowAngle, error: elbowError },
-            { name: '手首', angle: wristAngle, error: wristError },
+            { name: 'Shoulder', angle: shoulderAngle, error: shoulderError },
+            { name: 'Elbow', angle: elbowAngle, error: elbowError },
+            { name: 'Wrist', angle: wristAngle, error: wristError },
           ].map((joint, i) => (
             <div key={i} className="text-center">
               <div className="text-gray-500">{joint.name}</div>
@@ -1847,11 +1847,11 @@ function HandVisualization({ fingerAngles, fingerErrors, showError }) {
   const palmX = 90, palmY = 120;
   const fingerLength = 48;
   const fingerConfigs = [
-    { name: '親指', offX: -32, offY: 18, base: -30, width: 11, isThumb: true },
-    { name: '人差', offX: -14, offY: -25, base: -82, width: 9 },
-    { name: '中指', offX: 2, offY: -32, base: -90, width: 9 },
-    { name: '薬指', offX: 18, offY: -25, base: -98, width: 9 },
-    { name: '小指', offX: 32, offY: -12, base: -110, width: 8 },
+    { name: 'Thumb', offX: -32, offY: 18, base: -30, width: 11, isThumb: true },
+    { name: 'Index', offX: -14, offY: -25, base: -82, width: 9 },
+    { name: 'Middle', offX: 2, offY: -32, base: -90, width: 9 },
+    { name: 'Ring', offX: 18, offY: -25, base: -98, width: 9 },
+    { name: 'Pinky', offX: 32, offY: -12, base: -110, width: 8 },
   ];
 
   return (
@@ -2065,12 +2065,12 @@ function WalkingVisualization({ legAngle, hipError, kneeError, showError, step }
       <div className="mt-3 bg-slate-900/50 rounded-lg p-2 w-full">
         <div className="grid grid-cols-2 gap-4 text-xs">
           <div className="text-center">
-            <div className="text-gray-500">股関節</div>
+            <div className="text-gray-500">Hip joint</div>
             <div className="text-cyan-400 font-mono">{hipA.toFixed(1)}°</div>
             {showError && <div className="text-red-400 font-mono text-[10px]">±{hipError.toFixed(2)}°</div>}
           </div>
           <div className="text-center">
-            <div className="text-gray-500">膝関節</div>
+            <div className="text-gray-500">Knee joint</div>
             <div className="text-cyan-400 font-mono">{kneeA.toFixed(1)}°</div>
             {showError && <div className="text-red-400 font-mono text-[10px]">±{kneeError.toFixed(2)}°</div>}
           </div>
@@ -2510,19 +2510,19 @@ export default function RoPEOptimusSimulator() {
           <div className="flex flex-wrap gap-6 justify-center text-xs">
             <div className="flex items-center gap-2">
               <div className="w-4 h-1 bg-cyan-500 rounded opacity-50" style={{boxShadow: '0 0 6px #06B6D4'}}></div>
-              <span className="text-gray-400">理想位置 (float32)</span>
+              <span className="text-gray-400">Ideal position (float32)</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-4 h-3 bg-gradient-to-b from-white to-gray-300 rounded-sm"></div>
-              <span className="text-gray-400">実際の位置 (量子化後)</span>
+              <span className="text-gray-400">Actual position (quantized)</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-4 h-0.5 bg-red-500 rounded" style={{backgroundImage: 'repeating-linear-gradient(90deg, #EF4444, #EF4444 3px, transparent 3px, transparent 6px)'}}></div>
-              <span className="text-gray-400">誤差 (Δ)</span>
+              <span className="text-gray-400">Error (Δ)</span>
             </div>
           </div>
           <div className="mt-2 text-[10px] text-gray-500 text-center">
-            ブラウザ内の相対比較。厳密なfloat32ではありません
+            Relative comparison in the browser. Not strict float32.
           </div>
         </div>
 
@@ -2708,19 +2708,19 @@ export default function RoPEOptimusSimulator() {
 
         {/* Footer explanation */}
         <div className="mt-6 bg-slate-900/30 border border-slate-800 rounded-lg p-4">
-          <h4 className="text-cyan-400 font-semibold text-sm mb-2">🤖 RoPE × ロボット制御の対応</h4>
+          <h4 className="text-cyan-400 font-semibold text-sm mb-2">🤖 RoPE × Robot Control Mapping</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-gray-400">
             <div>
-              <span className="text-cyan-300">θ (回転角度)</span> → 関節の曲げ角度。8-bit量子化では255段階しか表現できない
+              <span className="text-cyan-300">θ (rotation angle)</span> → Joint bend angle. 8-bit quantization only has 255 steps.
             </div>
             <div>
-              <span className="text-cyan-300">誤差の蓄積</span> → 肩→肘→手首と連鎖するほど、指先の位置ズレが増大
+              <span className="text-cyan-300">Error accumulation</span> → The more it chains from shoulder → elbow → wrist, the more fingertip drift grows.
             </div>
             <div>
-              <span className="text-cyan-300">log(θ)量子化</span> → ダイナミックレンジを圧縮し、同じビット数で高精度を実現
+              <span className="text-cyan-300">log(θ) quantization</span> → Compresses dynamic range to achieve higher precision at the same bit width.
             </div>
             <div>
-              <span className="text-cyan-300">卵を持つ</span> → 繊細な力加減には高精度な角度制御が必須
+              <span className="text-cyan-300">Holding an egg</span> → Delicate force control requires high-precision angle control.
             </div>
           </div>
         </div>

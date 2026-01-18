@@ -590,15 +590,15 @@ export default function RoPEOptimusSimulator() {
           <div className="flex flex-wrap gap-6 justify-center text-xs">
             <div className="flex items-center gap-2">
               <div className="w-4 h-1 bg-cyan-500 rounded opacity-50"></div>
-              <span className="text-gray-400">理想位置 (float32)</span>
+              <span className="text-gray-400">Ideal position (float32)</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-4 h-3 bg-gradient-to-b from-white to-gray-400 rounded-sm"></div>
-              <span className="text-gray-400">実際の位置 (量子化後)</span>
+              <span className="text-gray-400">Actual position (quantized)</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-4 h-0.5 bg-red-500"></div>
-              <span className="text-gray-400">誤差 (Δ)</span>
+              <span className="text-gray-400">Error (Δ)</span>
             </div>
           </div>
         </div>
@@ -687,9 +687,9 @@ export default function RoPEOptimusSimulator() {
 
         {/* Footer */}
         <div className="mt-6 bg-slate-900/30 border border-slate-800 rounded-lg p-4 text-xs text-gray-500">
-          <span className="text-cyan-400">θ(角度)</span> → 関節角度 | 
-          <span className="text-cyan-400 ml-2">log(θ)量子化</span> → 高精度を維持 | 
-          <span className="text-cyan-400 ml-2">誤差蓄積</span> → 肩→肘→手首で増幅
+          <span className="text-cyan-400">θ (angle)</span> → Joint angle | 
+          <span className="text-cyan-400 ml-2">log(θ) quantization</span> → Preserve high precision | 
+          <span className="text-cyan-400 ml-2">Error accumulation</span> → Amplifies from shoulder → elbow → wrist
         </div>
       </div>
     </div>

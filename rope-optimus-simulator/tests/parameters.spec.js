@@ -9,58 +9,58 @@ const setRangeValue = async (locator, value) => {
   }, String(value));
 };
 
-test.describe('パラメータ変更テスト', () => {
+test.describe('Parameter change tests', () => {
 
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('#root');
   });
 
-  test.describe('卵グリップゲーム', () => {
+  test.describe('Egg grip game', () => {
 
-    test('グリップスライダーを操作できる', async ({ page }) => {
-      // スライダーを探す
+    test('Can adjust the grip slider', async ({ page }) => {
+      // Find slider
       const slider = page.locator('input[type="range"]').first();
       await expect(slider).toBeVisible();
 
-      // 初期値を取得
+      // Read initial value
       const initialValue = await slider.inputValue();
 
-      // スライダーを変更
+      // Change slider
       await setRangeValue(slider, 50);
 
-      // 値が変わったことを確認
+      // Verify value changed
       const newValue = await slider.inputValue();
       expect(newValue).toBe('50');
     });
 
-    test('グリップ力を上げると圧力表示が変化する', async ({ page }) => {
+    test('Raising grip changes pressure display', async ({ page }) => {
       const slider = page.locator('input[type="range"]').first();
 
-      // 低い値に設定
+      // Set low value
       await setRangeValue(slider, 10);
       await page.waitForTimeout(500);
 
-      // 高い値に設定
+      // Set high value
       await setRangeValue(slider, 80);
       await page.waitForTimeout(500);
 
-      // スクリーンショットを撮影
+      // Take screenshot
       await page.screenshot({
         path: 'tests/screenshots/grip-high.png',
         fullPage: true
       });
     });
 
-    test('リセットボタンが機能する', async ({ page }) => {
-      // リセットボタンを探してクリック
-      const resetButton = page.locator('button', { hasText: /reset|リセット/i });
+    test('Reset button works', async ({ page }) => {
+      // Find and click reset button
+      const resetButton = page.locator('button', { hasText: /reset/i });
 
       if (await resetButton.count() > 0) {
         await resetButton.click();
         await page.waitForTimeout(300);
 
-        // リセット後のスクリーンショット
+        // Screenshot after reset
         await page.screenshot({
           path: 'tests/screenshots/after-reset.png',
           fullPage: true
@@ -69,10 +69,10 @@ test.describe('パラメータ変更テスト', () => {
     });
   });
 
-  test.describe('RoPEシミュレーション', () => {
+  test.describe('RoPE simulation', () => {
 
-    test('シーケンス長を変更できる', async ({ page }) => {
-      // seqLen入力を探す
+    test('Can change sequence length', async ({ page }) => {
+      // Find seqLen input
       const seqLenInput = page.locator('input[type="number"]').first();
 
       if (await seqLenInput.count() > 0) {
@@ -84,14 +84,14 @@ test.describe('パラメータ変更テスト', () => {
       }
     });
 
-    test('ビット数スライダーを変更できる', async ({ page }) => {
-      // bitsスライダーを探す（min="2" max="8"のもの）
+    test('Can change bits slider', async ({ page }) => {
+      // Find bits slider (min="2" max="8")
       const bitsSlider = page.locator('input[type="range"][min="2"][max="8"]');
 
       if (await bitsSlider.count() > 0) {
         await expect(bitsSlider).toBeVisible();
 
-        // 4ビットに変更
+        // Change to 4-bit
         await setRangeValue(bitsSlider, 4);
         await page.waitForTimeout(300);
 
@@ -105,15 +105,15 @@ test.describe('パラメータ変更テスト', () => {
       }
     });
 
-    test('シミュレーション実行ボタンをクリックできる', async ({ page }) => {
-      // 実行ボタンを探す
-      const runButton = page.locator('button', { hasText: /run|実行|simulation/i });
+    test('Can click the run simulation button', async ({ page }) => {
+      // Find run button
+      const runButton = page.locator('button', { hasText: /run|simulation/i });
 
       if (await runButton.count() > 0) {
         await expect(runButton).toBeEnabled();
         await runButton.click();
 
-        // 実行中の状態を確認（ボタンがdisabledになるか確認）
+        // Verify running state (button disabled)
         await page.waitForTimeout(500);
 
         await page.screenshot({
@@ -123,9 +123,9 @@ test.describe('パラメータ変更テスト', () => {
       }
     });
 
-    test('アニメーション切り替えボタンが機能する', async ({ page }) => {
-      // アニメーション切り替えボタンを探す
-      const animButton = page.locator('button', { hasText: /pause|stop|anim|一時停止/i });
+    test('Animation toggle button works', async ({ page }) => {
+      // Find animation toggle button
+      const animButton = page.locator('button', { hasText: /pause|stop|anim/i });
 
       if (await animButton.count() > 0) {
         await animButton.click();
@@ -139,20 +139,20 @@ test.describe('パラメータ変更テスト', () => {
     });
   });
 
-  test.describe('チャート更新', () => {
+  test.describe('Chart updates', () => {
 
-    test('パラメータ変更後にチャートが更新される', async ({ page }) => {
-      // チャートが存在することを確認
+    test('Chart updates after parameter changes', async ({ page }) => {
+      // Ensure chart exists
       const chart = page.locator('.recharts-wrapper').first();
       await expect(chart).toBeVisible({ timeout: 10000 });
 
-      // 変更前のスクリーンショット
+      // Screenshot before change
       await page.screenshot({
         path: 'tests/screenshots/chart-before.png',
         fullPage: true
       });
 
-      // パラメータを変更（利用可能なスライダーを使用）
+      // Change parameter (use available slider)
       const slider = page.locator('input[type="range"]').first();
       if (await slider.count() > 0) {
         const initialValue = await slider.inputValue();
@@ -160,10 +160,10 @@ test.describe('パラメータ変更テスト', () => {
         await setRangeValue(slider, newValue);
       }
 
-      // 更新を待つ
+      // Wait for update
       await page.waitForTimeout(1000);
 
-      // 変更後のスクリーンショット
+      // Screenshot after change
       await page.screenshot({
         path: 'tests/screenshots/chart-after.png',
         fullPage: true

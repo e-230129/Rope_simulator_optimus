@@ -1,76 +1,76 @@
 import { test, expect } from '@playwright/test';
 
-// スクリーンショットの競合を避けるためシリアル実行
+// Run serially to avoid screenshot conflicts
 test.describe.configure({ mode: 'serial' });
 
-test.describe('ビューモード切り替えテスト', () => {
+test.describe('View mode switch tests', () => {
 
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('#root');
-    // アプリが完全にロードされるまで待機
+    // Wait for the app to fully load
     await expect(page.locator('button', { hasText: 'SVG Mode' })).toBeVisible();
   });
 
-  test('SVG Modeがデフォルトで表示される', async ({ page }, testInfo) => {
-    // SVG Modeボタンが表示されていることを確認
+  test('SVG Mode is shown by default', async ({ page }, testInfo) => {
+    // Ensure SVG Mode button is visible
     const svgButton = page.locator('button', { hasText: 'SVG Mode' });
     await expect(svgButton).toBeVisible();
 
-    // SVG Mode特有のコンテンツが表示されていることを確認
+    // Ensure SVG Mode content is visible
     const svgContent = page.locator('text=Egg Grip Challenge');
     await expect(svgContent).toBeVisible();
 
-    // スクリーンショット（testInfo.outputPath使用）
+    // Screenshot (using testInfo.outputPath)
     await page.screenshot({
       path: testInfo.outputPath('svg-mode.png'),
       fullPage: true
     });
   });
 
-  test('Photo Modeに切り替えできる', async ({ page }, testInfo) => {
-    // Photo Modeボタンをクリック
+  test('Can switch to Photo Mode', async ({ page }, testInfo) => {
+    // Click Photo Mode button
     const photoButton = page.locator('button', { hasText: 'Photo Mode' });
     await expect(photoButton).toBeVisible();
     await photoButton.click();
 
-    // Photo Mode特有の要素を確認
+    // Verify Photo Mode-specific elements
     const photoTitle = page.locator('text=Photo Mode - Egg Grip');
     await expect(photoTitle).toBeVisible({ timeout: 5000 });
 
-    // 画像が読み込まれたことを確認
+    // Verify image is loaded
     const photoImage = page.locator('img[src*="tesla-optimus-hands"]');
     await expect(photoImage).toBeVisible({ timeout: 5000 });
 
-    // スクリーンショット
+    // Screenshot
     await page.screenshot({
       path: testInfo.outputPath('photo-mode.png'),
       fullPage: true
     });
   });
 
-  test('Pixi Modeに切り替えできる', async ({ page }, testInfo) => {
-    // Pixi Modeボタンをクリック
+  test('Can switch to Pixi Mode', async ({ page }, testInfo) => {
+    // Click Pixi Mode button
     const pixiButton = page.locator('button', { hasText: 'Pixi Mode' });
     await expect(pixiButton).toBeVisible();
     await pixiButton.click();
 
-    // Pixi Mode特有の要素を確認
+    // Verify Pixi Mode-specific elements
     const pixiTitle = page.locator('text=Pixi Mode - Mesh Deformation');
     await expect(pixiTitle).toBeVisible({ timeout: 5000 });
 
-    // Canvasが存在することを確認
+    // Verify canvas exists
     const canvas = page.locator('canvas');
     await expect(canvas).toBeVisible({ timeout: 5000 });
 
-    // スクリーンショット
+    // Screenshot
     await page.screenshot({
       path: testInfo.outputPath('pixi-mode.png'),
       fullPage: true
     });
   });
 
-  test('モード間を連続で切り替えできる', async ({ page }, testInfo) => {
+  test('Can cycle between modes', async ({ page }, testInfo) => {
     const svgButton = page.locator('button', { hasText: 'SVG Mode' });
     const photoButton = page.locator('button', { hasText: 'Photo Mode' });
     const pixiButton = page.locator('button', { hasText: 'Pixi Mode' });
@@ -87,28 +87,28 @@ test.describe('ビューモード切り替えテスト', () => {
     await svgButton.click();
     await expect(page.locator('text=Egg Grip Challenge')).toBeVisible();
 
-    // 最終的にSVG Modeに戻っていることを確認
+    // Confirm it ends back on SVG Mode
     await page.screenshot({
       path: testInfo.outputPath('mode-cycle.png'),
       fullPage: true
     });
   });
 
-  test('Noise Modeを切り替えできる', async ({ page }, testInfo) => {
-    // Noise Modeのセレクトを探す（最初の一致を使用）
+  test('Can switch Noise Mode', async ({ page }, testInfo) => {
+    // Find the Noise Mode select (use first match)
     const noiseSelect = page.locator('select').filter({ has: page.locator('option[value="mixed"]') }).first();
 
     await expect(noiseSelect).toBeVisible();
 
-    // 現在の値を取得
+    // Read current value
     const initialValue = await noiseSelect.inputValue();
-    expect(initialValue).toBeTruthy(); // 値が設定されていることを確認
+    expect(initialValue).toBeTruthy(); // Ensure a value is set
 
-    // 値を変更
+    // Change value
     const newValue = initialValue === 'mixed' ? 'naive' : 'mixed';
     await noiseSelect.selectOption(newValue);
 
-    // 値が変わったことを確認
+    // Verify value changed
     await expect(noiseSelect).toHaveValue(newValue);
 
     await page.screenshot({
@@ -117,19 +117,19 @@ test.describe('ビューモード切り替えテスト', () => {
     });
   });
 
-  test('Photo Modeでグリップ操作ができる', async ({ page }, testInfo) => {
-    // Photo Modeに切り替え
+  test('Can adjust grip in Photo Mode', async ({ page }, testInfo) => {
+    // Switch to Photo Mode
     const photoButton = page.locator('button', { hasText: 'Photo Mode' });
     await photoButton.click();
     await expect(page.locator('text=Photo Mode - Egg Grip')).toBeVisible();
 
-    // Photo Modeのコンテナ内のスライダーを特定
+    // Find slider inside Photo Mode container
     const photoContainer = page.locator('div', { has: page.locator('text=Photo Mode - Egg Grip') });
     const slider = photoContainer.locator('input[type="range"]').first();
 
     await expect(slider).toBeVisible();
 
-    // スライダーを操作
+    // Adjust slider
     await slider.evaluate((el, v) => {
       const setter = Object.getOwnPropertyDescriptor(el.__proto__, 'value').set;
       setter.call(el, v);
@@ -137,7 +137,7 @@ test.describe('ビューモード切り替えテスト', () => {
       el.dispatchEvent(new Event('change', { bubbles: true }));
     }, '70');
 
-    // 値が変更されたことを確認（スライダー値で検証）
+    // Verify value changed (by slider value)
     await expect(slider).toHaveValue('70');
 
     await page.screenshot({
@@ -146,25 +146,25 @@ test.describe('ビューモード切り替えテスト', () => {
     });
   });
 
-  test('Pixi Modeでグリップ操作ができる', async ({ page }, testInfo) => {
-    // Pixi Modeに切り替え
+  test('Can adjust grip in Pixi Mode', async ({ page }, testInfo) => {
+    // Switch to Pixi Mode
     const pixiButton = page.locator('button', { hasText: 'Pixi Mode' });
     await pixiButton.click();
 
-    // Canvasがロードされるまで待機
+    // Wait for canvas to load
     const canvas = page.locator('canvas');
     await expect(canvas).toBeVisible({ timeout: 5000 });
 
-    // Pixi Mode特有のタイトルが表示されるまで待機
+    // Wait for Pixi Mode title to appear
     await expect(page.locator('text=Pixi Mode - Mesh Deformation')).toBeVisible();
 
-    // Pixi Modeのコンテナ内のスライダーを特定
+    // Find slider inside Pixi Mode container
     const pixiContainer = page.locator('div', { has: page.locator('text=Pixi Mode - Mesh Deformation') });
     const slider = pixiContainer.locator('input[type="range"]').first();
 
     await expect(slider).toBeVisible();
 
-    // スライダーを操作
+    // Adjust slider
     await slider.evaluate((el, v) => {
       const setter = Object.getOwnPropertyDescriptor(el.__proto__, 'value').set;
       setter.call(el, v);
@@ -172,7 +172,7 @@ test.describe('ビューモード切り替えテスト', () => {
       el.dispatchEvent(new Event('change', { bubbles: true }));
     }, '80');
 
-    // 値が変更されたことを確認（スライダー値で検証）
+    // Verify value changed (by slider value)
     await expect(slider).toHaveValue('80');
 
     await page.screenshot({
