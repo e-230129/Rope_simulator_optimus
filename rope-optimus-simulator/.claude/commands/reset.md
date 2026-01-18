@@ -1,22 +1,22 @@
-# /reset - 迷子復帰コマンド
+# /reset - Lost Recovery Command
 
-## やること
+## What to Do
 
-1. 以下を読んで3点要約を出力:
+1. Read the following and output a 3-point summary:
    - @SSOT.md
    - @TASKS.md
    - @progress.md
 
-## 出力フォーマット
+## Output Format
 
 ```
 ## Reset Summary
 
-1. **Current Task**: TASKS.md の Now セクションから
-2. **Blocker**: progress.md の Known issues から
-3. **Next Action**: 具体的な次の一手
+1. **Current Task**: From the Now section of TASKS.md
+2. **Blocker**: From Known issues in progress.md
+3. **Next Action**: Specific next step
 
 ## Recommendation
 
-迷子になった原因の推測と、軌道修正の提案
+Hypothesis on why we got lost and proposal for course correction
 ```

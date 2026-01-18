@@ -1,29 +1,29 @@
-# ADR XXXX: タイトル
+# ADR XXXX: Title
 
 Date: YYYY-MM-DD
 Status: Proposed / Accepted / Deprecated / Superseded
 
 ## Context
 
-なぜこの決定が必要になったか
+Why this decision is needed
 
 ## Decision
 
-何を決定したか
+What was decided
 
 ## Consequences
 
 ### Positive
-- 
+-
 
 ### Negative
-- 
+-
 
 ### Neutral
-- 
+-
 
 ## Alternatives considered
 
-| 選択肢 | Pros | Cons | 却下理由 |
-|--------|------|------|----------|
+| Option | Pros | Cons | Rejection Reason |
+|--------|------|------|------------------|
 | | | | |

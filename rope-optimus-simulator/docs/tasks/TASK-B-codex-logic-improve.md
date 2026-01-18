@@ -1,40 +1,40 @@
-# Task B: Codex用 - 計算ロジック/アルゴリズム改善
+# Task B: Codex - Calculation Logic/Algorithm Improvements
 
-## 概要
-GPT-5.2 Proのレビュー指摘に基づき、計算ロジックの改善と監査可能性の向上を行う。
+## Overview
+Improve calculation logic and auditability based on GPT-5.2 Pro review feedback.
 
-## 前提知識
-- Tesla特許 US20260017019A1: RoPE Mixed-Precision Hardware
-- 現在の実装: `log(θ)` → 量子化 → `exp()` でθを復元
+## Background Knowledge
+- Tesla Patent US20260017019A1: RoPE Mixed-Precision Hardware
+- Current implementation: `log(theta)` → quantization → `exp()` to recover theta
 
-## 現状（既に実装済み）
-✅ ストリーミング計算（`runSimulation`はposごとにRMSEを累積）
-✅ ヒストグラムのbin直接カウント（配列に溜めない）
-✅ `showNaive=false`時のnaive計算スキップ
+## Current Status (Already Implemented)
+- Streaming calculation (`runSimulation` accumulates RMSE per pos)
+- Direct histogram bin counting (no array accumulation)
+- Skip naive calculation when `showNaive=false`
 
-## タスク詳細
+## Task Details
 
-### B-1: quantModeのUI連携（優先度: 高）
+### B-1: quantMode UI Integration (Priority: High)
 
-**問題**: 関数定義では`quantMode`引数があるが、UIから切り替えできない
+**Problem**: Function definition has `quantMode` argument, but no UI to switch it
 
-**現状コード** (`src/App.jsx` Line 62-86):
+**Current Code** (`src/App.jsx` Line 62-86):
 ```javascript
 function computeLogThetaScalesAnalytic(seqLen, logInvFreq, bits, mode) {
-  // mode = 'global' | 'per_dim' が使える
+  // mode = 'global' | 'per_dim' can be used
   if (mode === 'global') { ... }
-  // per_dimの場合
+  // per_dim case
   const scales = new Array(half);
   for (let i = 0; i < half; i++) { ... }
 }
 ```
 
-**追加実装**:
+**Implementation to Add**:
 ```javascript
-// State追加
+// Add State
 const [quantMode, setQuantMode] = useState('per_dim'); // 'per_dim' | 'global'
 
-// UI追加（Parametersセクションに）
+// Add UI (in Parameters section)
 <div>
   <label>Quantization Mode</label>
   <select value={quantMode} onChange={e => setQuantMode(e.target.value)}>
@@ -44,15 +44,15 @@ const [quantMode, setQuantMode] = useState('per_dim'); // 'per_dim' | 'global'
 </div>
 ```
 
-**検証項目**:
-- `per_dim`と`global`でRMSEの差を比較表示
-- 特許の主張（per_dimがglobalより精度が高い）を可視化
+**Verification Items**:
+- Compare RMSE difference between `per_dim` and `global`
+- Visualize patent claim (per_dim is more accurate than global)
 
-### B-2: pack/unpack検証の実装（優先度: 中）
+### B-2: pack/unpack Verification Implementation (Priority: Medium)
 
-**問題**: UIに"pack/unpack"と表示されているが、検証可能なメトリクスがない
+**Problem**: UI shows "pack/unpack" but no verifiable metrics
 
-**現状コード** (`src/App.jsx` Line 32-35):
+**Current Code** (`src/App.jsx` Line 32-35):
 ```javascript
 function int8ToUint8(x) { return x & 0xff; }
 function uint8ToInt8(u) { const v = u & 0xff; return v >= 128 ? v - 256 : v; }
@@ -60,9 +60,9 @@ function pack2x8ToU16(lo, hi) { return (int8ToUint8(lo) | (int8ToUint8(hi) << 8)
 function unpackU16To2x8(p) { return [uint8ToInt8(p & 0xff), uint8ToInt8((p >> 8) & 0xff)]; }
 ```
 
-**追加実装**:
+**Implementation to Add**:
 ```javascript
-// runSimulation内で pack/unpack の一致率を計算
+// Calculate pack/unpack match rate inside runSimulation
 let packMismatch = 0;
 let packTotal = 0;
 
@@ -77,66 +77,66 @@ for (let i = 0; i < halfEven; i += 2) {
   }
 }
 
-// 結果表示
+// Display result
 const packMatchRate = packTotal > 0 ? ((packTotal - packMismatch) / packTotal * 100) : 100;
 ```
 
-**UI表示追加**:
+**UI Display Addition**:
 ```jsx
 <div className="text-xs">
   Pack/Unpack Match Rate: {packMatchRate.toFixed(2)}%
 </div>
 ```
 
-### B-3: 計算精度の明示（優先度: 低）
+### B-3: Clarify Calculation Precision (Priority: Low)
 
-**問題**: JSは`float64`だが、UIは"float32基準"と表示している
+**Problem**: JS uses `float64`, but UI displays "float32 reference"
 
-**対応案1**: 注釈を追加
+**Option 1**: Add annotation
 ```jsx
 <p className="text-xs text-gray-500">
-  ※ ブラウザ内の相対比較（baseline vs mixed）。厳密なfloat32精度ではありません。
+  * Relative comparison within browser (baseline vs mixed). Not exact float32 precision.
 </p>
 ```
 
-**対応案2**: Math.froundでfloat32をエミュレート（計算コスト増）
+**Option 2**: Emulate float32 with Math.fround (increases computation cost)
 ```javascript
 const xEven = Math.fround(rand());
 const xOdd = Math.fround(rand());
-// ただしsin/cos/exp/logはfloat64のまま
+// But sin/cos/exp/log remain float64
 ```
 
-→ 推奨は**対応案1**（注釈追加）
+→ Recommended: **Option 1** (add annotation)
 
-### B-4: seqLen上限でのガード強化（優先度: 低）
+### B-4: seqLen Upper Limit Guard Enhancement (Priority: Low)
 
-**問題**: seqLen=65536, dim=256 でブラウザが重くなる可能性
+**Problem**: Browser may slow down at seqLen=65536, dim=256
 
-**追加実装**:
+**Implementation to Add**:
 ```javascript
-const MAX_SAFE_CELLS = 1_000_000; // seqLen × dim の上限
+const MAX_SAFE_CELLS = 1_000_000; // seqLen × dim upper limit
 const cellCount = seqLen * dim;
 
 if (cellCount > MAX_SAFE_CELLS) {
-  alert(`計算量が大きすぎます (${cellCount.toLocaleString()} cells)。seqLen または dim を下げてください。`);
+  alert(`Computation too large (${cellCount.toLocaleString()} cells). Please reduce seqLen or dim.`);
   return;
 }
 ```
 
-## 参照ファイル
-- `src/App.jsx` Line 2042-2166: `runSimulation`関数
-- GPT-5.2 Proレビュー（ユーザー提供）
+## Reference Files
+- `src/App.jsx` Line 2042-2166: `runSimulation` function
+- GPT-5.2 Pro review (user provided)
 
-## 完了条件
-1. quantModeがUIから切り替え可能
-2. pack/unpack一致率が表示される
-3. float64での計算であることが明示される
-4. 大きなseqLenでの安全ガードが機能する
+## Completion Criteria
+1. quantMode switchable from UI
+2. pack/unpack match rate displayed
+3. float64 calculation explicitly noted
+4. Safety guard works for large seqLen
 
-## テスト手順
+## Test Procedure
 ```bash
 npm run dev
-# 1. quantModeを切り替えてRMSEの変化を確認
-# 2. usePackDemoをONにしてpack/unpack一致率=100%を確認
-# 3. seqLen=65536, dim=256でガードが発動することを確認
+# 1. Switch quantMode and verify RMSE changes
+# 2. Turn on usePackDemo and verify pack/unpack match rate = 100%
+# 3. Verify guard triggers at seqLen=65536, dim=256
 ```

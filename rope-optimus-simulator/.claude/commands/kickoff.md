@@ -1,28 +1,28 @@
 !python3 scripts/validate-ssot.py
 
-# /kickoff - セッション開始儀式
+# /kickoff - Session Start Ritual
 
-## やること
+## What to Do
 
-1. SSOT検証（上の ! コマンドで実行済み）
-2. 以下を読んで5点要約を出力:
+1. SSOT validation (executed by the ! command above)
+2. Read the following and output a 5-point summary:
    - @SSOT.md
-   - @plan.md（1行目のパスを参照し、そのファイルも読む）
+   - @plan.md (refer to the path on line 1 and read that file too)
    - @TASKS.md
    - @progress.md
 
-## 出力フォーマット
+## Output Format
 
 ```
 ## Session Summary
 
-1. **Goal**: 現在の目標
-2. **State**: 進捗状況
-3. **Decision**: 直近の重要な決定
-4. **Blocker**: ブロッカーがあれば
-5. **Next**: 次のアクション（TASKS.mdから）
+1. **Goal**: Current objective
+2. **State**: Progress status
+3. **Decision**: Recent important decisions
+4. **Blocker**: Any blockers
+5. **Next**: Next action (from TASKS.md)
 
 ## Session Plan
 
-今セッションでやることの提案
+Proposal for what to do in this session
 ```

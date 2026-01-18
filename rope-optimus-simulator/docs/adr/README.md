@@ -1,30 +1,31 @@
 # Architecture Decision Records
 
-このフォルダは設計判断の記録を保持します。
+This folder holds records of design decisions.
 
-## ADR一覧
+## ADR List
 
-| # | タイトル | ステータス | 日付 |
-|---|----------|------------|------|
-| 0001 | React + Vite + Tailwind 採用 | Accepted | 2025-01-18 |
+| # | Title | Status | Date |
+|---|-------|--------|------|
+| 0001 | React + Vite + Tailwind Adoption | Accepted | 2025-01-18 |
+| 0002 | Pixi.js Mesh Deformation | Accepted | 2025-01-18 |
 
-## 命名規則
+## Naming Convention
 
 ```
 NNNN-short-title.md
 ```
 
-- NNNN: 0001から連番
-- short-title: ケバブケース
+- NNNN: Sequential number starting from 0001
+- short-title: kebab-case
 
-## ステータス
+## Status
 
-- `Proposed` - 提案中
-- `Accepted` - 承認済み
-- `Deprecated` - 非推奨
-- `Superseded by ADR-XXXX` - 後続ADRで置換
+- `Proposed` - Under proposal
+- `Accepted` - Approved
+- `Deprecated` - No longer recommended
+- `Superseded by ADR-XXXX` - Replaced by subsequent ADR
 
-## 関連
+## Related
 
 - [SSOT Index](../../SSOT.md)
 - [Plans](../plans/)

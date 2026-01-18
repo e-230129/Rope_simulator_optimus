@@ -1,48 +1,47 @@
 # Requirements
 
-RoPE Optimus Simulator の要件定義
+RoPE Optimus Simulator Requirements Definition
 
-## 概要
+## Overview
 
-Tesla Patent US20260017019A1 (RoPE Mixed-Precision Hardware) の概念を
-Optimus ロボットの関節制御に適用した場合の効果を可視化するシミュレータ
+A simulator that visualizes the effects of applying Tesla Patent US20260017019A1 (RoPE Mixed-Precision Hardware) concepts to Optimus robot joint control.
 
-## 機能要件
+## Functional Requirements
 
-### FR-1: ロボットビジュアライゼーション
+### FR-1: Robot Visualization
 
-- **FR-1.1**: 腕の関節（肩・肘・手首）を3関節で表示
-- **FR-1.2**: 手の指（5本）の動きを表示
-- **FR-1.3**: 脚の歩行動作を表示
-- **FR-1.4**: 理想位置（シアン）と実際位置（白）の比較表示
-- **FR-1.5**: 卵を持つ手のアニメーション
+- **FR-1.1**: Display arm joints (shoulder, elbow, wrist) with 3 joints
+- **FR-1.2**: Display hand finger (5 fingers) movement
+- **FR-1.3**: Display leg walking motion
+- **FR-1.4**: Compare ideal position (cyan) vs actual position (white)
+- **FR-1.5**: Egg-holding hand animation
 
-### FR-2: 量子化シミュレーション
+### FR-2: Quantization Simulation
 
-- **FR-2.1**: Mixed-Precision (Log/Exp) 方式のRMSE計算
-- **FR-2.2**: Naive (Linear) 方式との比較
-- **FR-2.3**: パラメータ（SeqLen, Dim, Bits）の調整UI
-- **FR-2.4**: 結果のチャート表示
+- **FR-2.1**: RMSE calculation for Mixed-Precision (Log/Exp) method
+- **FR-2.2**: Comparison with Naive (Linear) method
+- **FR-2.3**: Parameter adjustment UI (SeqLen, Dim, Bits)
+- **FR-2.4**: Chart display of results
 
-### FR-3: アニメーション
+### FR-3: Animation
 
-- **FR-3.1**: requestAnimationFrameベースの滑らかな動き
-- **FR-3.2**: 一時停止/再開機能
-- **FR-3.3**: シミュレーション結果に連動した誤差表示
+- **FR-3.1**: Smooth movement based on requestAnimationFrame
+- **FR-3.2**: Pause/resume functionality
+- **FR-3.3**: Error display linked to simulation results
 
-## 非機能要件
+## Non-Functional Requirements
 
-### NFR-1: パフォーマンス
-- 60fps程度のアニメーション
+### NFR-1: Performance
+- Animation at approximately 60fps
 
-### NFR-2: 互換性
-- Chrome, Firefox, Safari の最新版で動作
+### NFR-2: Compatibility
+- Works on latest versions of Chrome, Firefox, Safari
 
-### NFR-3: デザイン
-- Tesla Optimus の実機に近い白黒配色
-- ダークテーマUI
+### NFR-3: Design
+- Black and white color scheme similar to actual Tesla Optimus
+- Dark theme UI
 
-## 関連
+## Related
 
 - [SSOT Index](../../SSOT.md)
 - [ADR](../adr/)

@@ -1,27 +1,27 @@
-# /update-progress - セッション終了儀式
+# /update-progress - Session End Ritual
 
-## やること
+## What to Do
 
-1. 今セッションで行った作業を振り返る
-2. @progress.md を更新:
+1. Review work done in this session
+2. Update @progress.md:
    - Current objective
    - Recent commands executed
    - Known issues / blockers
    - Notes
 
-## 注意
+## Notes
 
-- 「次やること」は progress.md に書かない（TASKS.md に統一）
-- TASKS.md の Done 移動は人間が確認してから
+- Do not write "what to do next" in progress.md (use TASKS.md instead)
+- Moving items to Done in TASKS.md should be confirmed by human first
 
-## 出力フォーマット
+## Output Format
 
 ```
 ## Session End Summary
 
-- **Completed**: 完了したこと
-- **In Progress**: 途中のこと
-- **Blockers**: 発見した問題
+- **Completed**: What was finished
+- **In Progress**: What is ongoing
+- **Blockers**: Discovered issues
 
-progress.md を更新しました。
+progress.md has been updated.
 ```

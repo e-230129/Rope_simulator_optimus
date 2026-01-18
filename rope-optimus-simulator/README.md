@@ -1,95 +1,93 @@
 # RoPE × Optimus Simulator
 
-Tesla Patent US20260017019A1 (RoPE Mixed-Precision Hardware) の概念を
-Optimus ロボットの関節制御に適用した場合の効果を可視化するシミュレータ。
+A simulator that visualizes the effects of applying Tesla Patent US20260017019A1 (RoPE Mixed-Precision Hardware) concepts to Optimus robot joint control.
 
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
-# 依存関係インストール
+# Install dependencies
 npm install
 
-# 開発サーバー起動
+# Start development server
 npm run dev
 ```
 
-## 🧪 テスト実行
+## Running Tests
 
 ```bash
-# 依存関係インストール
+# Install dependencies
 npm install
 
-# Playwright ブラウザインストール（初回のみ）
+# Install Playwright browsers (first time only)
 npx playwright install chromium
 
-# テスト実行
+# Run tests
 npm test
 
-# テストレポート確認
+# View test report
 npx playwright show-report
 ```
 
-### テスト構成
-- `tests/app.spec.js` - 基本動作テスト
-- `tests/parameters.spec.js` - パラメータ操作テスト  
-- `tests/view-modes.spec.js` - ビューモード切り替えテスト
+### Test Structure
+- `tests/app.spec.js` - Basic functionality tests
+- `tests/parameters.spec.js` - Parameter manipulation tests
+- `tests/view-modes.spec.js` - View mode switching tests
 
-**期待結果**: 19 tests passed
+**Expected result**: 19 tests passed
 
-## 📁 プロジェクト構造（SSOT準拠）
+## Project Structure (SSOT Compliant)
 
 ```
 rope-optimus-simulator/
-├── CLAUDE.md              # AI運用憲法
-├── SSOT.md                # 索引（地図）
-├── plan.md                # 現在の計画へのポインタ
-├── TASKS.md               # タスクボード
-├── progress.md            # AI短期メモリ
+├── CLAUDE.md              # AI Operating Constitution
+├── SSOT.md                # Index (Map)
+├── plan.md                # Current plan pointer
+├── TASKS.md               # Task board
+├── progress.md            # AI short-term memory
 ├── .claude/
-│   ├── commands/          # Claude Code コマンド
-│   └── skills/            # スキル定義
+│   ├── commands/          # Claude Code commands
+│   └── skills/            # Skill definitions
 ├── docs/
-│   ├── requirements/      # 要件定義
-│   ├── adr/               # 設計判断記録
-│   └── plans/             # 計画ドキュメント
+│   ├── requirements/      # Requirements definitions
+│   ├── adr/               # Architecture Decision Records
+│   └── plans/             # Plan documents
 ├── scripts/
-│   └── validate-ssot.py   # SSOT検証スクリプト
+│   └── validate-ssot.py   # SSOT validation script
 └── src/
-    ├── App.jsx            # メインコンポーネント
-    ├── App.stable.jsx     # 安定版（参照用）
-    ├── main.jsx           # エントリポイント
+    ├── App.jsx            # Main component
+    ├── App.stable.jsx     # Stable version (reference)
+    ├── main.jsx           # Entry point
     └── index.css          # Tailwind CSS
 ```
 
-## 🔧 Claude Code での開発
+## Development with Claude Code
 
 ```bash
-# セッション開始
+# Start session
 /kickoff
 
-# 迷子になったら
+# If lost
 /reset
 
-# セッション終了
+# End session
 /update-progress
 ```
 
-## 📊 機能
+## Features
 
-- **腕の制御可視化**: 肩・肘・手首の3関節アニメーション
-- **手の精密制御**: 5本指の動きと卵を持つデモ
-- **歩行制御**: 脚の動きと足位置誤差表示
-- **量子化比較**: Mixed-Precision vs Naive の RMSE チャート
+- **Arm Control Visualization**: 3-joint animation (shoulder, elbow, wrist)
+- **Hand Precision Control**: 5-finger movement and egg-holding demo
+- **Walking Control**: Leg movement and foot position error display
+- **Quantization Comparison**: Mixed-Precision vs Naive RMSE chart
 
-## 🎯 目的
+## Purpose
 
-RoPE (Rotary Position Embedding) の量子化誤差が
-ロボットの関節制御にどう影響するかを直感的に理解できるようにする。
+To intuitively understand how RoPE (Rotary Position Embedding) quantization errors affect robot joint control.
 
-- 🔵 シアン = 理想位置 (float32)
-- ⚪ 白 = 実際の位置 (量子化後)
-- 🔴 赤 = 誤差 (Δ)
+- Blue (Cyan) = Ideal position (float32)
+- White = Actual position (after quantization)
+- Red = Error (delta)
 
-## 📝 License
+## License
 
 MIT

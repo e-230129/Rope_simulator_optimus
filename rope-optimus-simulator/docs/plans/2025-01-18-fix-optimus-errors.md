@@ -1,4 +1,4 @@
-# Plan: RoPE Optimus Simulator エラー修正
+# Plan: RoPE Optimus Simulator Error Fixes
 
 Date: 2025-01-18
 Owner: Claude Code
@@ -6,69 +6,69 @@ Status: In Progress
 
 ## Goal
 
-rope_optimus_final.jsx の実行時エラーを修正し、ブラウザで正常に動作させる
+Fix runtime errors in rope_optimus_final.jsx and make it work correctly in browsers
 
 ## Non-Goals
 
-- 新機能の追加
-- パフォーマンス最適化
-- テストの追加（後続タスク）
+- Adding new features
+- Performance optimization
+- Adding tests (follow-up task)
 
 ## Constraints
 
-- Security: なし
-- Performance: アニメーションが60fps程度で動作すること
-- Compatibility: モダンブラウザ（Chrome, Firefox, Safari）
-- Deadline: なし
+- Security: None
+- Performance: Animation should run at approximately 60fps
+- Compatibility: Modern browsers (Chrome, Firefox, Safari)
+- Deadline: None
 
 ## Proposed Design
 
-### 概要
+### Overview
 
-React + Recharts + TailwindCSS でロボットの関節制御可視化を実装
+Implement robot joint control visualization with React + Recharts + TailwindCSS
 
-### 修正すべき問題
+### Issues to Fix
 
-1. **SVGグラデーション参照エラー**
-   - `<defs>` 内のグラデーション定義が各コンポーネントで重複
-   - 参照IDの衝突を解消
+1. **SVG Gradient Reference Errors**
+   - Gradient definitions in `<defs>` are duplicated across components
+   - Resolve reference ID conflicts
 
-2. **変数スコープの問題**
-   - map内での `angle` 変数名の衝突
-   - 配列destructuringの問題
+2. **Variable Scope Issues**
+   - `angle` variable name collision within map
+   - Array destructuring issues
 
-3. **コンポーネント構造**
-   - SvgDefs を適切に配置
-   - 各Visualizationコンポーネントの独立性確保
+3. **Component Structure**
+   - Properly place SvgDefs
+   - Ensure independence of each Visualization component
 
 ## File Changes
 
-| ファイル | 変更種別 | 説明 |
-|----------|----------|------|
-| src/App.jsx | Modify | エラー修正後のメインコンポーネント |
-| src/main.jsx | Add | Reactエントリポイント |
-| index.html | Add | HTMLテンプレート |
-| package.json | Add | 依存関係定義 |
-| vite.config.js | Add | Vite設定 |
-| tailwind.config.js | Add | Tailwind設定 |
+| File | Change Type | Description |
+|------|-------------|-------------|
+| src/App.jsx | Modify | Main component after error fixes |
+| src/main.jsx | Add | React entry point |
+| index.html | Add | HTML template |
+| package.json | Add | Dependency definitions |
+| vite.config.js | Add | Vite configuration |
+| tailwind.config.js | Add | Tailwind configuration |
 
 ## Test Plan
 
-- [ ] `npm run dev` でエラーなく起動
-- [ ] 3つのロボットビジュアライゼーションが表示される
-- [ ] アニメーションが動作する
-- [ ] シミュレーション実行でチャートが更新される
+- [ ] `npm run dev` starts without errors
+- [ ] Three robot visualizations are displayed
+- [ ] Animations work
+- [ ] Charts update on simulation run
 
 ## Risks & Mitigations
 
-| リスク | 可能性 | 影響 | 対策 |
-|--------|--------|------|------|
-| SVG互換性問題 | 低 | 中 | シンプルなSVG構造に簡略化 |
-| Recharts更新エラー | 低 | 低 | データ形式の検証 |
+| Risk | Likelihood | Impact | Mitigation |
+|------|------------|--------|------------|
+| SVG compatibility issues | Low | Medium | Simplify SVG structure |
+| Recharts update errors | Low | Low | Validate data format |
 
 ## Checklist
 
-- [ ] 人間が承認
-- [ ] 実装完了
-- [ ] テストパス
-- [ ] ドキュメント更新
+- [ ] Human approved
+- [ ] Implementation complete
+- [ ] Tests passed
+- [ ] Documentation updated

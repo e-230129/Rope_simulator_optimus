@@ -1,19 +1,19 @@
-# ADR-0002: Pixi.js によるメッシュ変形導入
+# ADR-0002: Pixi.js Mesh Deformation Introduction
 
 ## Status
 Accepted
 
 ## Context
-Photo Modeで静止画のOptimus手の指を動かしたい。
-WebGLベースのメッシュ変形技術が必要。
+Want to move the Optimus hand fingers in Photo Mode using static images.
+WebGL-based mesh deformation technology is needed.
 
 ## Decision
-Pixi.js (v8.x) を採用。
-理由:
-- React統合が容易
-- SimplePlaneによる簡易メッシュ変形
-- 軽量（three.jsより小さい）
+Adopt Pixi.js (v8.x).
+Reasons:
+- Easy React integration
+- Simple mesh deformation with SimplePlane
+- Lightweight (smaller than three.js)
 
 ## Consequences
-- bundle sizeが約200KB増加
-- WebGL非対応ブラウザでは fallback 必要
+- Bundle size increases by approximately 200KB
+- Fallback needed for browsers without WebGL support

@@ -1,16 +1,16 @@
-# Plan: 機能名
+# Plan: Feature Name
 
 Date: YYYY-MM-DD
-Owner: 担当者名
+Owner: Owner Name
 Status: Draft / Approved / In Progress / Completed / Superseded
 
 ## Goal
 
-達成したいこと
+What to achieve
 
 ## Non-Goals
 
-明示的にやらないこと
+Explicitly not doing
 
 ## Constraints
 
@@ -21,18 +21,18 @@ Status: Draft / Approved / In Progress / Completed / Superseded
 
 ## Proposed Design
 
-### 概要
+### Overview
 
-### コンポーネント
+### Components
 
-### データフロー
+### Data Flow
 
-### エラーハンドリング
+### Error Handling
 
 ## File Changes
 
-| ファイル | 変更種別 | 説明 |
-|----------|----------|------|
+| File | Change Type | Description |
+|------|-------------|-------------|
 | | Add/Modify/Delete | |
 
 ## Test Plan
@@ -43,14 +43,14 @@ Status: Draft / Approved / In Progress / Completed / Superseded
 
 ## Risks & Mitigations
 
-| リスク | 可能性 | 影響 | 対策 |
-|--------|--------|------|------|
+| Risk | Likelihood | Impact | Mitigation |
+|------|------------|--------|------------|
 | | | | |
 
 ## Checklist
 
-- [ ] 人間が承認
-- [ ] 実装完了
-- [ ] テストパス
-- [ ] ドキュメント更新
-- [ ] ADR作成（該当する場合）
+- [ ] Human approved
+- [ ] Implementation complete
+- [ ] Tests passed
+- [ ] Documentation updated
+- [ ] ADR created (if applicable)

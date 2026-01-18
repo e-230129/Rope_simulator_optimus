@@ -1,36 +1,36 @@
 # Verification Loop Skill
 
-テスト失敗 → 修正 → 再テストのループを管理するスキル。
+A skill to manage the test failure → fix → retest loop.
 
-## 使用タイミング
+## When to Use
 
-- `npm run dev` でエラーが出た時
-- コンポーネントが正しく表示されない時
-- アニメーションが動作しない時
+- When `npm run dev` produces errors
+- When components don't display correctly
+- When animations don't work
 
-## ループの流れ
+## Loop Flow
 
 ```
-1. エラーメッセージを確認
-2. 原因を特定（console, devtools）
-3. 最小限の修正を実施
-4. 再度実行して確認
-5. 3回失敗したら停止して報告
+1. Check error message
+2. Identify cause (console, devtools)
+3. Apply minimal fix
+4. Run again to verify
+5. Stop and report after 3 failures
 ```
 
-## 報告フォーマット（3回失敗時）
+## Report Format (After 3 Failures)
 
 ```
 ## Verification Failed
 
-- **Error**: エラーメッセージ
-- **Attempts**: 試した修正内容
-- **Hypothesis**: 原因の仮説
-- **Request**: 人間への依頼事項
+- **Error**: Error message
+- **Attempts**: Fixes attempted
+- **Hypothesis**: Theory on the cause
+- **Request**: Request for human assistance
 ```
 
-## チェックポイント
+## Checkpoints
 
-- [ ] エラーメッセージを正確に読んだか
-- [ ] 変更は最小限か
-- [ ] 副作用を考慮したか
+- [ ] Did you read the error message accurately?
+- [ ] Is the change minimal?
+- [ ] Did you consider side effects?

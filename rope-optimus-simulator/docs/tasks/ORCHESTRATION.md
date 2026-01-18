@@ -1,6 +1,6 @@
-# 🎯 並行作業オーケストレーション
+# Parallel Work Orchestration
 
-## 作業分担図
+## Work Distribution Diagram
 
 ```
                     ┌──────────────────────────────────┐
@@ -11,78 +11,78 @@
               ▼                     │                     ▼
 ┌─────────────────────────┐         │         ┌─────────────────────────┐
 │     Claude Code         │         │         │        Codex            │
-│  (UI/React/SVG専門)     │         │         │  (ロジック/最適化専門)  │
+│  (UI/React/SVG Expert)  │         │         │  (Logic/Optimization)   │
 ├─────────────────────────┤         │         ├─────────────────────────┤
-│ • SVGグラデーション修正 │         │         │ • quantMode UI連携     │
-│ • 変数スコープ解消      │         │         │ • pack/unpack検証      │
-│ • コンポーネント分割    │         │         │ • 計算精度の明示       │
-│ • Playwrightテスト維持  │         │         │ • seqLen安全ガード     │
+│ • SVG gradient fix      │         │         │ • quantMode UI linking  │
+│ • Variable scope fix    │         │         │ • pack/unpack verify    │
+│ • Component splitting   │         │         │ • Precision clarity     │
+│ • Playwright test maint │         │         │ • seqLen safety guard   │
 └─────────────────────────┘         │         └─────────────────────────┘
               │                     │                     │
               └─────────────────────┼─────────────────────┘
                                     ▼
                     ┌──────────────────────────────────┐
-                    │         最終マージ               │
-                    │   (App.jsx への統合・調整)       │
+                    │         Final Merge              │
+                    │   (Integration into App.jsx)    │
                     └──────────────────────────────────┘
 ```
 
-## 🚀 同時並行でOKなタスク
+## Tasks Safe for Parallel Execution
 
-| Claude Code | Codex | 競合リスク |
-|-------------|-------|-----------|
-| A-1: SVGグラデーションID修正 | B-1: quantMode UI連携 | 低（別セクション） |
-| A-2: 変数スコープ修正 | B-2: pack/unpack検証 | なし |
-| A-3: コンポーネント分割 | B-3: 計算精度明示 | 中（UI部分で競合可能性） |
+| Claude Code | Codex | Conflict Risk |
+|-------------|-------|---------------|
+| A-1: SVG gradient ID fix | B-1: quantMode UI linking | Low (different sections) |
+| A-2: Variable scope fix | B-2: pack/unpack verify | None |
+| A-3: Component splitting | B-3: Precision clarity | Medium (possible UI conflict) |
 
-## ⚠️ 注意: 競合が起きやすいポイント
+## Warning: Conflict-Prone Points
 
-1. **State定義の追加** (`useState`の行)
-   - Claude CodeとCodexが同時に追加すると重複する
-   - 対策: マージ時に重複を手動解消
+1. **State Definition Additions** (`useState` lines)
+   - If Claude Code and Codex add simultaneously, duplicates occur
+   - Mitigation: Manually resolve duplicates during merge
 
-2. **JSX内のUI追加** (Parametersセクション)
-   - 両方がUI要素を追加する場合
-   - 対策: 明確な挿入位置をコメントで指定
+2. **JSX UI Additions** (Parameters section)
+   - When both add UI elements
+   - Mitigation: Specify clear insertion points with comments
 
-3. **import文**
-   - 同じモジュールを別々に追加
-   - 対策: マージ時にimportを整理
+3. **import statements**
+   - Adding same module separately
+   - Mitigation: Clean up imports during merge
 
-## 📝 推奨ワークフロー
+## Recommended Workflow
 
-### Phase 1: 並行作業（同時実行可能）
+### Phase 1: Parallel Work (Can execute simultaneously)
 ```bash
 # Terminal 1 - Claude Code
 cd rope-optimus-simulator
-# TASK-A を実行
+# Execute TASK-A
 
 # Terminal 2 - Codex
 cd rope-optimus-simulator
-# TASK-B を実行
+# Execute TASK-B
 ```
 
-### Phase 2: マージ
+### Phase 2: Merge
 ```bash
-# 両方の変更をgitで確認
+# Check both changes with git
 git diff src/App.jsx
 
-# 競合があれば手動解消
-# 特にState定義とUI部分をチェック
+# Manually resolve conflicts
+# Especially check State definitions and UI parts
 ```
 
-### Phase 3: 動作確認
+### Phase 3: Verification
 ```bash
 npm run dev
-npm run test  # Playwrightテスト
+npm run test  # Playwright tests
 ```
 
-## 🔍 動作確認チェックリスト（最終）
+## Final Verification Checklist
 
-- [ ] `npm run dev` でエラーなし
-- [ ] SVGモードでOptimus手が表示
-- [ ] Photoモード/Pixiモードも動作
-- [ ] quantMode切り替えでRMSEが変化
-- [ ] pack/unpack一致率=100%表示
-- [ ] seqLen上限でガード発動
-- [ ] `npm run test` 全パス
+- [ ] `npm run dev` runs without errors
+- [ ] Optimus hand displays in SVG mode
+- [ ] Photo mode/Pixi mode also work
+- [ ] RMSE changes when switching quantMode
+- [ ] pack/unpack match rate shows 100%
+- [ ] Guard triggers at seqLen upper limit
+- [ ] `npm run test` all pass
