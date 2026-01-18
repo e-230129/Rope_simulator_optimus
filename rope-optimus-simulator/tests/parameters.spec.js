@@ -2,7 +2,8 @@ import { test, expect } from '@playwright/test';
 
 const setRangeValue = async (locator, value) => {
   await locator.evaluate((el, v) => {
-    el.value = v;
+    const setter = Object.getOwnPropertyDescriptor(el.__proto__, 'value').set;
+    setter.call(el, v);
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
   }, String(value));

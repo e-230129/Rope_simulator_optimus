@@ -152,6 +152,7 @@ const BREAK_THRESHOLD = 85; // Pressure above this breaks the egg
 const STRESS_THRESHOLD = 70; // Pressure above this shows stress
 const SAFE_ZONE_MIN = 50;  // Minimum grip to "hold" the egg
 const SAFE_ZONE_MAX = 75;  // Maximum safe grip
+const DROP_TIME_TO_BREAK = 0.35; // 秒 - SAFE_ZONE_MIN未満が続くと落下
 
 function useEggPhysics({ targetGripForce, noiseLevel, animationTime, isEnabled }) {
   const [eggState, setEggState] = useState(EGG_STATES.INTACT);
@@ -159,6 +160,8 @@ function useEggPhysics({ targetGripForce, noiseLevel, animationTime, isEnabled }
   const [peakPressure, setPeakPressure] = useState(0);
   const [safeTime, setSafeTime] = useState(0);
   const [score, setScore] = useState(0);
+  const [weakDuration, setWeakDuration] = useState(0);
+  const [breakReason, setBreakReason] = useState(null); // 'crush' | 'drop' | null
   const lastTimeRef = useRef(animationTime);
   const noiseHistoryRef = useRef([]);
 
@@ -174,7 +177,9 @@ function useEggPhysics({ targetGripForce, noiseLevel, animationTime, isEnabled }
     const timeNoise = Math.sin(animationTime * 15) * 0.3 +
                       Math.sin(animationTime * 23) * 0.2 +
                       Math.sin(animationTime * 37) * 0.15;
-    const randomNoise = (Math.random() - 0.5) * 0.4;
+    const seed = Math.floor(animationTime * 1000);
+    const rand = seededRandom(seed);
+    const randomNoise = rand() * 0.4;
 
     const totalNoise = baseNoise * (timeNoise + randomNoise);
     const pressure = targetGripForce + totalNoise;
@@ -200,19 +205,35 @@ function useEggPhysics({ targetGripForce, noiseLevel, animationTime, isEnabled }
       noiseHistoryRef.current.shift();
     }
 
+    // Score calculation - reward time in safe zone
+    const dt = animationTime - lastTimeRef.current;
+
     // State transitions
     if (eggState !== EGG_STATES.BROKEN) {
+      // Crush判定：圧力が高すぎると潰れる
       if (pressure >= BREAK_THRESHOLD) {
         setEggState(EGG_STATES.BROKEN);
+        setBreakReason('crush');
       } else if (pressure >= STRESS_THRESHOLD) {
         setEggState(EGG_STATES.STRESSED);
       } else if (eggState === EGG_STATES.STRESSED && pressure < STRESS_THRESHOLD - 5) {
         setEggState(EGG_STATES.INTACT);
       }
-    }
 
-    // Score calculation - reward time in safe zone
-    const dt = animationTime - lastTimeRef.current;
+      // Drop判定：SAFE_ZONE_MIN未満が一定時間続くと落下
+      if (pressure < SAFE_ZONE_MIN) {
+        setWeakDuration(prev => {
+          const newDuration = prev + dt;
+          if (newDuration >= DROP_TIME_TO_BREAK && eggState !== EGG_STATES.BROKEN) {
+            setEggState(EGG_STATES.BROKEN);
+            setBreakReason('drop');
+          }
+          return newDuration;
+        });
+      } else {
+        setWeakDuration(0);
+      }
+    }
     if (dt > 0 && eggState !== EGG_STATES.BROKEN) {
       if (pressure >= SAFE_ZONE_MIN && pressure <= SAFE_ZONE_MAX) {
         setSafeTime(t => t + dt);
@@ -227,6 +248,9 @@ function useEggPhysics({ targetGripForce, noiseLevel, animationTime, isEnabled }
     setActualPressure(0);
     setPeakPressure(0);
     setSafeTime(0);
+    setWeakDuration(0);
+    setBreakReason(null);
+    setScore(0);  // スコアもリセット
     noiseHistoryRef.current = [];
   }, []);
 
@@ -236,6 +260,8 @@ function useEggPhysics({ targetGripForce, noiseLevel, animationTime, isEnabled }
     peakPressure,
     safeTime,
     score,
+    breakReason,
+    weakDuration,
     noiseHistory: noiseHistoryRef.current,
     resetEgg,
     isInSafeZone: actualPressure >= SAFE_ZONE_MIN && actualPressure <= SAFE_ZONE_MAX,
@@ -243,6 +269,7 @@ function useEggPhysics({ targetGripForce, noiseLevel, animationTime, isEnabled }
     STRESS_THRESHOLD,
     SAFE_ZONE_MIN,
     SAFE_ZONE_MAX,
+    DROP_TIME_TO_BREAK,
   };
 }
 
@@ -250,7 +277,7 @@ function useEggPhysics({ targetGripForce, noiseLevel, animationTime, isEnabled }
 // Egg SVG Component
 // -----------------------------
 
-const EggObject = ({ state, pressure, stressLevel = 0 }) => {
+const EggObject = ({ state, pressure, stressLevel = 0, animationTime = 0 }) => {
   const isStressed = state === EGG_STATES.STRESSED;
   const isBroken = state === EGG_STATES.BROKEN;
 
@@ -260,8 +287,8 @@ const EggObject = ({ state, pressure, stressLevel = 0 }) => {
   const ry = 36 * (1 - squeeze);
 
   // Vibration when stressed
-  const vibX = isStressed ? Math.sin(Date.now() * 0.05) * 2 : 0;
-  const vibY = isStressed ? Math.cos(Date.now() * 0.07) * 1.5 : 0;
+  const vibX = isStressed ? Math.sin(animationTime * 50) * 2 : 0;
+  const vibY = isStressed ? Math.cos(animationTime * 70) * 1.5 : 0;
 
   // Color shift based on stress
   const stressColor = isStressed ? `rgba(239, 68, 68, ${stressLevel * 0.3})` : 'transparent';
@@ -518,6 +545,7 @@ function EggGripGame({ noiseLevel, bits, isAnimating }) {
                   state={eggPhysics.eggState}
                   pressure={eggPhysics.actualPressure}
                   stressLevel={stressLevel}
+                  animationTime={animTime}
                 />
               </g>
 
