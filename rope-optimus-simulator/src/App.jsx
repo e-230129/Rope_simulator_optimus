@@ -11,6 +11,7 @@ import {
   BarChart,
   Bar,
 } from 'recharts';
+import * as PIXI from 'pixi.js';
 
 // -----------------------------
 // Utils & Math Helpers
@@ -154,7 +155,14 @@ const SAFE_ZONE_MIN = 50;  // Minimum grip to "hold" the egg
 const SAFE_ZONE_MAX = 75;  // Maximum safe grip
 const DROP_TIME_TO_BREAK = 0.35; // 秒 - SAFE_ZONE_MIN未満が続くと落下
 
-function useEggPhysics({ targetGripForce, noiseLevel, animationTime, isEnabled }) {
+function useEggPhysics({
+  targetGripForce,
+  noiseLevel,      // mixed (log/exp) の RMSE
+  naiveNoiseLevel, // naive の RMSE（オプション）
+  noiseMode = 'mixed', // 'mixed' | 'naive'
+  animationTime,
+  isEnabled
+}) {
   const [eggState, setEggState] = useState(EGG_STATES.INTACT);
   const [actualPressure, setActualPressure] = useState(0);
   const [peakPressure, setPeakPressure] = useState(0);
@@ -165,6 +173,13 @@ function useEggPhysics({ targetGripForce, noiseLevel, animationTime, isEnabled }
   const lastTimeRef = useRef(animationTime);
   const noiseHistoryRef = useRef([]);
 
+  // 使用するノイズレベルを切替（ゲーム用に上限を設定）
+  const MAX_GAME_NOISE = 0.15; // 最大15%に制限してプレイ可能に
+  const rawNoise = noiseMode === 'naive'
+    ? (naiveNoiseLevel ?? noiseLevel * 1.5) // naive は mixed の1.5倍（デフォルト）
+    : noiseLevel;
+  const effectiveNoise = Math.min(rawNoise, MAX_GAME_NOISE);
+
   // Calculate actual pressure with quantization noise
   const calculatePressure = useCallback(() => {
     if (!isEnabled || eggState === EGG_STATES.BROKEN) {
@@ -173,7 +188,7 @@ function useEggPhysics({ targetGripForce, noiseLevel, animationTime, isEnabled }
 
     // Noise is based on quantization error (meanRmse)
     // Lower bits = more noise = harder to control
-    const baseNoise = noiseLevel * 100; // Scale up the noise
+    const baseNoise = effectiveNoise * 100; // Scale up the noise
     const timeNoise = Math.sin(animationTime * 15) * 0.3 +
                       Math.sin(animationTime * 23) * 0.2 +
                       Math.sin(animationTime * 37) * 0.15;
@@ -185,7 +200,7 @@ function useEggPhysics({ targetGripForce, noiseLevel, animationTime, isEnabled }
     const pressure = targetGripForce + totalNoise;
 
     return clamp(pressure, 0, 100);
-  }, [targetGripForce, noiseLevel, animationTime, isEnabled, eggState]);
+  }, [targetGripForce, effectiveNoise, animationTime, isEnabled, eggState]);
 
   // Update pressure and check for breaks
   useEffect(() => {
@@ -262,6 +277,7 @@ function useEggPhysics({ targetGripForce, noiseLevel, animationTime, isEnabled }
     score,
     breakReason,
     weakDuration,
+    effectiveNoise,
     noiseHistory: noiseHistoryRef.current,
     resetEgg,
     isInSafeZone: actualPressure >= SAFE_ZONE_MIN && actualPressure <= SAFE_ZONE_MAX,
@@ -348,6 +364,664 @@ const EggObject = ({ state, pressure, stressLevel = 0, animationTime = 0 }) => {
 };
 
 // -----------------------------
+// Pixi.js Photo Hand Component (Mesh Deformation)
+// -----------------------------
+
+function PixiPhotoHand({ gripForce, eggState, breakReason, animationTime, onReset }) {
+  const canvasRef = useRef(null);
+  const pixiAppRef = useRef(null);
+  const spriteRef = useRef(null);
+  const displacementSpriteRef = useRef(null);
+  const filterRef = useRef(null);
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Pixi.js アプリケーションの初期化
+  useEffect(() => {
+    let app = null;
+    let destroyed = false;
+
+    const init = async () => {
+      const canvas = canvasRef.current;
+      if (!canvas) {
+        console.error('Canvas not found');
+        return;
+      }
+
+      try {
+        // Canvas サイズを取得
+        const rect = canvas.getBoundingClientRect();
+        const width = rect.width || 800;
+        const height = rect.height || 450;
+
+        app = new PIXI.Application();
+
+        await app.init({
+          width: width,
+          height: height,
+          backgroundColor: 0x1e293b,
+          resolution: window.devicePixelRatio || 1,
+          autoDensity: true,
+          canvas: canvas,
+        });
+
+        if (destroyed) {
+          app.destroy(true);
+          return;
+        }
+
+        pixiAppRef.current = app;
+
+        // 画像をロード
+        const handTexture = await PIXI.Assets.load('/tesla-optimus-hands.jpg');
+
+        if (destroyed) {
+          app.destroy(true);
+          return;
+        }
+
+        // Sprite を作成
+        const sprite = new PIXI.Sprite(handTexture);
+
+        // スケール調整してキャンバスにフィット
+        const scale = Math.min(
+          app.screen.width / sprite.texture.width,
+          app.screen.height / sprite.texture.height
+        );
+        sprite.scale.set(scale);
+        sprite.x = (app.screen.width - sprite.texture.width * scale) / 2;
+        sprite.y = (app.screen.height - sprite.texture.height * scale) / 2;
+
+        // DisplacementFilter 用のノイズテクスチャを作成
+        const displacementCanvas = document.createElement('canvas');
+        displacementCanvas.width = 256;
+        displacementCanvas.height = 256;
+        const ctx = displacementCanvas.getContext('2d');
+
+        // グラデーション（中心から外側へ）を作成
+        const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+        gradient.addColorStop(0, 'rgb(128, 128, 128)');
+        gradient.addColorStop(1, 'rgb(128, 128, 128)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 256, 256);
+
+        // 指のある領域に変位パターンを描く
+        ctx.fillStyle = 'rgb(180, 140, 128)';
+        ctx.beginPath();
+        ctx.ellipse(160, 180, 60, 80, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        const displacementTexture = PIXI.Texture.from(displacementCanvas);
+        const displacementSprite = new PIXI.Sprite(displacementTexture);
+        displacementSprite.texture.source.addressMode = 'clamp';
+
+        // DisplacementFilterを作成
+        const displacementFilter = new PIXI.DisplacementFilter({
+          sprite: displacementSprite,
+          scale: 0,
+        });
+
+        sprite.filters = [displacementFilter];
+        app.stage.addChild(sprite);
+        app.stage.addChild(displacementSprite);
+        displacementSprite.visible = false;
+
+        spriteRef.current = sprite;
+        displacementSpriteRef.current = displacementSprite;
+        filterRef.current = displacementFilter;
+
+        setIsLoaded(true);
+      } catch (e) {
+        console.error('Pixi.js initialization error:', e);
+        setError(e.message);
+      }
+    };
+
+    // DOMが準備されるまで少し待つ
+    const timer = setTimeout(init, 100);
+
+    return () => {
+      clearTimeout(timer);
+      destroyed = true;
+      if (pixiAppRef.current) {
+        pixiAppRef.current.destroy(true, { children: true, texture: true });
+        pixiAppRef.current = null;
+      }
+    };
+  }, []);
+
+  // DisplacementFilter: gripForceに応じて変形
+  useEffect(() => {
+    const filter = filterRef.current;
+    if (!filter || !isLoaded) return;
+
+    // grip force を 0.0~1.0 に正規化
+    const force = Math.min(Math.max(gripForce / 100, 0), 1);
+
+    // 変位量を設定（握力が強いほど変形）
+    const displacement = force * 30;
+    filter.scale.x = displacement;
+    filter.scale.y = displacement * 0.5;
+  }, [gripForce, isLoaded]);
+
+  // エラー時のフォールバック
+  if (error) {
+    return (
+      <div className="w-full aspect-video bg-slate-800 rounded-xl flex items-center justify-center text-gray-400">
+        <div className="text-center">
+          <p>WebGL not supported</p>
+          <p className="text-xs mt-1">Using fallback mode</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative w-full" style={{ aspectRatio: '16/9' }}>
+      <canvas
+        ref={canvasRef}
+        className="w-full h-full rounded-xl"
+        style={{ display: 'block', backgroundColor: '#1e293b' }}
+      />
+
+      {/* Egg overlay using CSS */}
+      {isLoaded && (
+        <div
+          className="absolute pointer-events-none"
+          style={{
+            top: '52%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+          }}
+        >
+          {eggState === 'broken' ? (
+            // 割れた卵 - 黄身がぐしゃっと垂れる
+            <div className="relative">
+              {/* メインの黄身（潰れた形） */}
+              <div
+                className="bg-yellow-500 opacity-90"
+                style={{
+                  width: '50px',
+                  height: '35px',
+                  borderRadius: '50% 50% 40% 40%',
+                  boxShadow: '0 0 15px rgba(234, 179, 8, 0.8)',
+                }}
+              />
+              {/* 垂れる黄身1 */}
+              <div
+                className="absolute bg-yellow-500 opacity-85"
+                style={{
+                  width: '12px',
+                  height: '45px',
+                  left: '8px',
+                  top: '25px',
+                  borderRadius: '40% 40% 50% 50%',
+                  background: 'linear-gradient(to bottom, #eab308 0%, #ca8a04 100%)',
+                }}
+              />
+              {/* 垂れる黄身2 */}
+              <div
+                className="absolute bg-yellow-500 opacity-85"
+                style={{
+                  width: '10px',
+                  height: '55px',
+                  left: '25px',
+                  top: '28px',
+                  borderRadius: '40% 40% 50% 50%',
+                  background: 'linear-gradient(to bottom, #eab308 0%, #ca8a04 100%)',
+                }}
+              />
+              {/* 垂れる黄身3 */}
+              <div
+                className="absolute bg-yellow-500 opacity-80"
+                style={{
+                  width: '8px',
+                  height: '35px',
+                  left: '38px',
+                  top: '22px',
+                  borderRadius: '40% 40% 50% 50%',
+                  background: 'linear-gradient(to bottom, #eab308 0%, #ca8a04 100%)',
+                }}
+              />
+              {/* 殻の破片（白） */}
+              <div
+                className="absolute bg-amber-100 opacity-70"
+                style={{
+                  width: '15px',
+                  height: '10px',
+                  left: '-5px',
+                  top: '5px',
+                  borderRadius: '50%',
+                  transform: 'rotate(-20deg)',
+                }}
+              />
+              <div
+                className="absolute bg-amber-100 opacity-70"
+                style={{
+                  width: '12px',
+                  height: '8px',
+                  left: '42px',
+                  top: '8px',
+                  borderRadius: '50%',
+                  transform: 'rotate(25deg)',
+                }}
+              />
+            </div>
+          ) : eggState === 'stressed' ? (
+            // ヒビが入った卵
+            <div
+              className="relative w-12 h-16 transition-all duration-150"
+              style={{
+                transform: `scale(${1 - (gripForce / 100) * 0.15})`,
+              }}
+            >
+              {/* 卵本体 */}
+              <div
+                className="w-full h-full bg-gradient-to-b from-amber-100 to-amber-200 border-2 border-amber-300"
+                style={{
+                  borderRadius: '50% 50% 50% 50% / 60% 60% 40% 40%',
+                }}
+              />
+              {/* ヒビ1 - メイン */}
+              <svg
+                className="absolute inset-0 w-full h-full"
+                viewBox="0 0 48 64"
+                fill="none"
+                stroke="#8B4513"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              >
+                <path d="M24 8 L20 18 L26 24 L18 32 L24 38" />
+                <path d="M20 18 L14 22" />
+                <path d="M26 24 L32 22" />
+                <path d="M18 32 L12 36" />
+              </svg>
+              {/* ヒビ2 - サブ */}
+              <svg
+                className="absolute inset-0 w-full h-full"
+                viewBox="0 0 48 64"
+                fill="none"
+                stroke="#8B4513"
+                strokeWidth="1"
+                strokeLinecap="round"
+                opacity="0.7"
+              >
+                <path d="M34 15 L30 22 L35 28" />
+                <path d="M30 22 L26 20" />
+              </svg>
+            </div>
+          ) : (
+            // 正常な卵
+            <div
+              className="w-12 h-16 bg-gradient-to-b from-amber-100 to-amber-200 border-2 border-amber-300 transition-all duration-150"
+              style={{
+                borderRadius: '50% 50% 50% 50% / 60% 60% 40% 40%',
+                transform: `scale(${1 - (gripForce / 100) * 0.15})`,
+              }}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Status overlay */}
+      <div className="absolute top-2 right-2 bg-black/70 text-white p-2 rounded text-sm">
+        <div className="text-xs text-gray-400">Grip: {gripForce.toFixed(0)}%</div>
+        {eggState === 'broken' && (
+          <div className="text-red-400 font-bold mt-1">
+            {breakReason === 'crush' ? 'CRUSHED!' : 'DROPPED!'}
+          </div>
+        )}
+        <button
+          onClick={onReset}
+          className="mt-2 px-2 py-1 bg-blue-600 hover:bg-blue-700 rounded text-xs w-full"
+        >
+          Reset
+        </button>
+      </div>
+
+      {/* Loading indicator */}
+      {!isLoaded && !error && (
+        <div className="absolute inset-0 flex items-center justify-center bg-slate-900/80 rounded-xl">
+          <div className="text-gray-400">Loading...</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// -----------------------------
+// Pixi Egg Grip Game Component (with mesh deformation)
+// -----------------------------
+
+function PixiEggGripGame({ noiseLevel, naiveNoiseLevel, noiseMode = 'mixed', bits, isAnimating }) {
+  const [gripForce, setGripForce] = useState(60);
+  const [gameActive, setGameActive] = useState(true);
+  const [animTime, setAnimTime] = useState(0);
+  const animRef = useRef(null);
+
+  // Animation loop
+  useEffect(() => {
+    if (gameActive && isAnimating) {
+      const animate = () => {
+        setAnimTime(t => t + 0.016);
+        animRef.current = requestAnimationFrame(animate);
+      };
+      animRef.current = requestAnimationFrame(animate);
+    }
+    return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
+  }, [gameActive, isAnimating]);
+
+  const eggPhysics = useEggPhysics({
+    targetGripForce: gripForce,
+    noiseLevel: noiseLevel,
+    naiveNoiseLevel: naiveNoiseLevel,
+    noiseMode: noiseMode,
+    animationTime: animTime,
+    isEnabled: gameActive,
+  });
+
+  const handleReset = () => {
+    eggPhysics.resetEgg();
+    setGripForce(60);
+  };
+
+  return (
+    <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
+      <div className="flex justify-between items-center mb-3">
+        <h3 className="text-gray-300 font-medium text-sm flex items-center gap-2">
+          <span className="text-lg">🎮</span> Pixi Mode - Mesh Deformation
+        </h3>
+        <span className={`px-2 py-0.5 rounded text-xs font-bold ${
+          eggPhysics.eggState === EGG_STATES.BROKEN ? 'bg-red-500/20 text-red-400' :
+          eggPhysics.isInSafeZone ? 'bg-green-500/20 text-green-400' :
+          'bg-yellow-500/20 text-yellow-400'
+        }`}>
+          {eggPhysics.eggState === EGG_STATES.BROKEN
+            ? (eggPhysics.breakReason === 'crush' ? 'CRUSHED!' : 'DROPPED!')
+            : eggPhysics.isInSafeZone ? 'SAFE' : 'DANGER'}
+        </span>
+      </div>
+
+      {/* Pixi Canvas + Pressure Gauge */}
+      <div className="flex gap-3 mb-3">
+        <div className="flex-1">
+          <PixiPhotoHand
+            gripForce={gripForce}
+            eggState={eggPhysics.eggState}
+            breakReason={eggPhysics.breakReason}
+            animationTime={animTime}
+            onReset={handleReset}
+          />
+        </div>
+        {/* Pressure gauge */}
+        <div className="flex flex-col items-center justify-center">
+          <PressureGauge
+            pressure={eggPhysics.actualPressure}
+            breakThreshold={BREAK_THRESHOLD}
+            stressThreshold={STRESS_THRESHOLD}
+            safeMin={SAFE_ZONE_MIN}
+            safeMax={SAFE_ZONE_MAX}
+            noiseHistory={eggPhysics.noiseHistory}
+          />
+        </div>
+      </div>
+
+      {/* Grip Force Slider */}
+      <div className="space-y-2">
+        <div className="flex justify-between text-xs text-gray-400">
+          <span>Grip Force: {gripForce.toFixed(0)}%</span>
+          <span>Actual: {eggPhysics.actualPressure.toFixed(1)}%</span>
+        </div>
+        <input
+          type="range"
+          min="0"
+          max="100"
+          value={gripForce}
+          onChange={(e) => setGripForce(Number(e.target.value))}
+          className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"
+          disabled={eggPhysics.eggState === EGG_STATES.BROKEN}
+        />
+        <div className="flex justify-between text-xs text-gray-500">
+          <span>Too Weak (Drop)</span>
+          <span className="text-green-400">Safe Zone</span>
+          <span>Too Strong (Crush)</span>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+        <div className="bg-slate-800/50 rounded p-2">
+          <div className="text-gray-400">Score</div>
+          <div className="text-cyan-400 font-mono">{eggPhysics.score}</div>
+        </div>
+        <div className="bg-slate-800/50 rounded p-2">
+          <div className="text-gray-400">Safe Time</div>
+          <div className="text-green-400 font-mono">{eggPhysics.safeTime.toFixed(1)}s</div>
+        </div>
+        <div className="bg-slate-800/50 rounded p-2">
+          <div className="text-gray-400">Noise ({noiseMode === 'naive' ? 'Naive' : 'Log/Exp'})</div>
+          <div className="text-yellow-400 font-mono">{(eggPhysics.effectiveNoise * 100).toFixed(1)}%</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// -----------------------------
+// Photo Egg Grip Game Component
+// -----------------------------
+
+function PhotoEggGripGame({ noiseLevel, naiveNoiseLevel, noiseMode = 'mixed', bits, isAnimating }) {
+  const [gripForce, setGripForce] = useState(60); // 初期値を安全ゾーン内に
+  const [gameActive, setGameActive] = useState(true);
+  const [showCrackEffect, setShowCrackEffect] = useState(false);
+  const [animTime, setAnimTime] = useState(0);
+  const animRef = useRef(null);
+
+  // 卵の位置（画像サイズ 1920x1080 基準で調整）
+  const EGG_X = 920;
+  const EGG_Y = 580;
+  const EGG_SCALE = 1.2;
+
+  // Animation loop
+  useEffect(() => {
+    if (gameActive && isAnimating) {
+      const animate = () => {
+        setAnimTime(t => t + 0.016);
+        animRef.current = requestAnimationFrame(animate);
+      };
+      animRef.current = requestAnimationFrame(animate);
+    }
+    return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
+  }, [gameActive, isAnimating]);
+
+  const eggPhysics = useEggPhysics({
+    targetGripForce: gripForce,
+    noiseLevel: noiseLevel,
+    naiveNoiseLevel: naiveNoiseLevel,
+    noiseMode: noiseMode,
+    animationTime: animTime,
+    isEnabled: gameActive,
+  });
+
+  // Crack effect when egg breaks
+  useEffect(() => {
+    if (eggPhysics.eggState === EGG_STATES.BROKEN) {
+      setShowCrackEffect(true);
+      setTimeout(() => setShowCrackEffect(false), 500);
+    }
+  }, [eggPhysics.eggState]);
+
+  const handleReset = () => {
+    eggPhysics.resetEgg();
+    setGripForce(60); // 安全ゾーン内にリセット
+  };
+
+  const { eggState, actualPressure, breakReason, weakDuration, DROP_TIME_TO_BREAK } = eggPhysics;
+
+  return (
+    <div className={`relative ${showCrackEffect ? 'animate-pulse' : ''}`}>
+      {/* Crack flash overlay */}
+      {showCrackEffect && (
+        <div className="absolute inset-0 bg-red-500/30 rounded-xl z-10 pointer-events-none"/>
+      )}
+
+      <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
+        <div className="flex justify-between items-center mb-3">
+          <h3 className="text-gray-300 font-medium text-sm flex items-center gap-2">
+            <span className="text-lg">📷</span> Photo Mode - Egg Grip
+          </h3>
+          <div className="flex items-center gap-2">
+            <span className={`px-2 py-0.5 rounded text-xs font-bold ${
+              eggState === EGG_STATES.BROKEN ? 'bg-red-500/20 text-red-400' :
+              eggPhysics.isInSafeZone ? 'bg-green-500/20 text-green-400' :
+              'bg-yellow-500/20 text-yellow-400'
+            }`}>
+              {eggState === EGG_STATES.BROKEN
+                ? (breakReason === 'crush' ? 'CRUSHED!' : 'DROPPED!')
+                : eggPhysics.isInSafeZone ? 'SAFE' : 'DANGER'}
+            </span>
+            <button
+              onClick={handleReset}
+              className="px-2 py-0.5 bg-slate-700 hover:bg-slate-600 rounded text-xs text-gray-300"
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+
+        {/* Photo with Egg Overlay */}
+        <div className="relative w-full mb-3">
+          <img
+            src="/tesla-optimus-hands.jpg"
+            alt="Optimus hands"
+            className="w-full rounded-lg"
+          />
+          <svg
+            className="absolute top-0 left-0 w-full h-full pointer-events-none"
+            viewBox="0 0 1920 1080"
+            preserveAspectRatio="xMidYMid meet"
+          >
+            <defs>
+              {/* Finger gradient */}
+              <linearGradient id="photoFingerGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor="#E5E7EB" stopOpacity="0.9"/>
+                <stop offset="50%" stopColor="#F3F4F6" stopOpacity="0.95"/>
+                <stop offset="100%" stopColor="#D1D5DB" stopOpacity="0.9"/>
+              </linearGradient>
+            </defs>
+
+            {/* Finger indicators - move based on grip force */}
+            <g transform={`translate(${EGG_X}, ${EGG_Y})`}>
+              {/* Left fingers */}
+              {[0, 1, 2].map((i) => {
+                const fingerGrip = (gripForce / 100) * 60;
+                const baseX = -120 + fingerGrip;
+                const yOffset = (i - 1) * 35;
+                return (
+                  <g key={`left-${i}`} style={{transition: 'transform 0.15s ease-out'}}>
+                    <rect
+                      x={baseX}
+                      y={yOffset - 12}
+                      width="45"
+                      height="24"
+                      rx="8"
+                      fill="url(#photoFingerGradient)"
+                      stroke="#9CA3AF"
+                      strokeWidth="1"
+                      style={{transition: 'x 0.15s ease-out'}}
+                    />
+                    {/* Finger joint lines */}
+                    <line x1={baseX + 15} y1={yOffset - 10} x2={baseX + 15} y2={yOffset + 10} stroke="#6B7280" strokeWidth="1" opacity="0.5"/>
+                    <line x1={baseX + 30} y1={yOffset - 10} x2={baseX + 30} y2={yOffset + 10} stroke="#6B7280" strokeWidth="1" opacity="0.5"/>
+                  </g>
+                );
+              })}
+
+              {/* Thumb (right side, angled) */}
+              {(() => {
+                const fingerGrip = (gripForce / 100) * 50;
+                const thumbX = 80 - fingerGrip;
+                return (
+                  <g style={{transition: 'transform 0.15s ease-out'}}>
+                    <rect
+                      x={thumbX}
+                      y={-15}
+                      width="50"
+                      height="30"
+                      rx="10"
+                      fill="url(#photoFingerGradient)"
+                      stroke="#9CA3AF"
+                      strokeWidth="1"
+                      transform={`rotate(-20, ${thumbX + 25}, 0)`}
+                      style={{transition: 'x 0.15s ease-out'}}
+                    />
+                  </g>
+                );
+              })()}
+            </g>
+
+            {/* Egg */}
+            <g transform={`translate(${EGG_X}, ${EGG_Y}) scale(${EGG_SCALE})`}>
+              <EggObject
+                state={eggState}
+                pressure={actualPressure}
+                animationTime={animTime}
+              />
+            </g>
+          </svg>
+
+          {/* Drop warning indicator */}
+          {actualPressure < SAFE_ZONE_MIN && eggState !== EGG_STATES.BROKEN && (
+            <div className="absolute bottom-2 left-2 bg-yellow-500/80 text-black px-2 py-1 rounded text-xs font-bold">
+              SLIPPING! {((DROP_TIME_TO_BREAK - weakDuration) * 1000).toFixed(0)}ms
+            </div>
+          )}
+        </div>
+
+        {/* Grip Force Slider */}
+        <div className="space-y-2">
+          <div className="flex justify-between text-xs text-gray-400">
+            <span>Grip Force: {gripForce.toFixed(0)}%</span>
+            <span>Actual: {actualPressure.toFixed(1)}%</span>
+          </div>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={gripForce}
+            onChange={(e) => setGripForce(Number(e.target.value))}
+            className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"
+            disabled={eggState === EGG_STATES.BROKEN}
+          />
+          <div className="flex justify-between text-xs text-gray-500">
+            <span>Too Weak (Drop)</span>
+            <span className="text-green-400">Safe Zone</span>
+            <span>Too Strong (Crush)</span>
+          </div>
+        </div>
+
+        {/* Stats */}
+        <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+          <div className="bg-slate-800/50 rounded p-2">
+            <div className="text-gray-400">Score</div>
+            <div className="text-cyan-400 font-mono">{eggPhysics.score}</div>
+          </div>
+          <div className="bg-slate-800/50 rounded p-2">
+            <div className="text-gray-400">Safe Time</div>
+            <div className="text-green-400 font-mono">{eggPhysics.safeTime.toFixed(1)}s</div>
+          </div>
+          <div className="bg-slate-800/50 rounded p-2">
+            <div className="text-gray-400">Noise ({noiseMode === 'naive' ? 'Naive' : 'Log/Exp'})</div>
+            <div className="text-yellow-400 font-mono">{(eggPhysics.effectiveNoise * 100).toFixed(1)}%</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// -----------------------------
 // Pressure Gauge Component
 // -----------------------------
 
@@ -425,8 +1099,8 @@ const PressureGauge = ({ pressure, breakThreshold, stressThreshold, safeMin, saf
 // Egg Grip Game Component
 // -----------------------------
 
-function EggGripGame({ noiseLevel, bits, isAnimating }) {
-  const [gripForce, setGripForce] = useState(30);
+function EggGripGame({ noiseLevel, naiveNoiseLevel, noiseMode = 'mixed', bits, isAnimating }) {
+  const [gripForce, setGripForce] = useState(60); // 初期値を安全ゾーン内に
   const [gameActive, setGameActive] = useState(true);
   const [showCrackEffect, setShowCrackEffect] = useState(false);
   const [animTime, setAnimTime] = useState(0);
@@ -447,6 +1121,8 @@ function EggGripGame({ noiseLevel, bits, isAnimating }) {
   const eggPhysics = useEggPhysics({
     targetGripForce: gripForce,
     noiseLevel: noiseLevel,
+    naiveNoiseLevel: naiveNoiseLevel,
+    noiseMode: noiseMode,
     animationTime: animTime,
     isEnabled: gameActive,
   });
@@ -461,7 +1137,7 @@ function EggGripGame({ noiseLevel, bits, isAnimating }) {
 
   const handleReset = () => {
     eggPhysics.resetEgg();
-    setGripForce(30);
+    setGripForce(60); // 安全ゾーン内にリセット
   };
 
   const stressLevel = eggPhysics.actualPressure >= STRESS_THRESHOLD
@@ -551,7 +1227,7 @@ function EggGripGame({ noiseLevel, bits, isAnimating }) {
 
               {/* Noise level indicator */}
               <text x="10" y="150" fill="#6B7280" fontSize="8" fontFamily="monospace">
-                Noise: {(noiseLevel * 100).toFixed(1)}% ({bits}-bit)
+                Noise: {(eggPhysics.effectiveNoise * 100).toFixed(1)}% ({bits}-bit {noiseMode === 'naive' ? 'Naive' : 'Log/Exp'})
               </text>
             </svg>
           </div>
@@ -1306,6 +1982,8 @@ export default function RoPEOptimusSimulator() {
 
   const [animationTime, setAnimationTime] = useState(0);
   const [isAnimating, setIsAnimating] = useState(true);
+  const [eggView, setEggView] = useState('svg'); // 'svg' | 'photo' | 'pixi'
+  const [noiseMode, setNoiseMode] = useState('mixed'); // 'mixed' | 'naive'
   const animationRef = useRef(null);
   const runIdRef = useRef(0);
 
@@ -1542,12 +2220,84 @@ export default function RoPEOptimusSimulator() {
         </div>
 
         {/* Egg Grip Challenge - Interactive Demo */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-          <EggGripGame
-            noiseLevel={results ? results.statsLog.meanRmse : (9 - bits) * 0.02}
-            bits={bits}
-            isAnimating={isAnimating}
-          />
+        <div className="mb-6">
+          {/* View and Noise Mode Toggle Buttons */}
+          <div className="flex flex-wrap gap-4 mb-3 items-center">
+            {/* View Toggle */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setEggView('svg')}
+                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                  eggView === 'svg'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
+                }`}
+              >
+                SVG Mode
+              </button>
+              <button
+                onClick={() => setEggView('photo')}
+                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                  eggView === 'photo'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
+                }`}
+              >
+                Photo Mode
+              </button>
+              <button
+                onClick={() => setEggView('pixi')}
+                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                  eggView === 'pixi'
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
+                }`}
+              >
+                Pixi Mode
+              </button>
+            </div>
+
+            {/* Noise Mode Toggle */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-400">Noise source:</span>
+              <select
+                value={noiseMode}
+                onChange={e => setNoiseMode(e.target.value)}
+                className="px-2 py-1 bg-slate-700 border border-slate-600 rounded text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="mixed">Log/Exp (Mixed)</option>
+                <option value="naive">Naive (Linear)</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Conditional rendering based on view mode */}
+            {eggView === 'pixi' ? (
+              <PixiEggGripGame
+                noiseLevel={results ? results.statsLog.meanRmse : (9 - bits) * 0.02}
+                naiveNoiseLevel={results ? results.statsNaive.meanRmse : (9 - bits) * 0.03}
+                noiseMode={noiseMode}
+                bits={bits}
+                isAnimating={isAnimating}
+              />
+            ) : eggView === 'photo' ? (
+              <PhotoEggGripGame
+                noiseLevel={results ? results.statsLog.meanRmse : (9 - bits) * 0.02}
+                naiveNoiseLevel={results ? results.statsNaive.meanRmse : (9 - bits) * 0.03}
+                noiseMode={noiseMode}
+                bits={bits}
+                isAnimating={isAnimating}
+              />
+            ) : (
+              <EggGripGame
+                noiseLevel={results ? results.statsLog.meanRmse : (9 - bits) * 0.02}
+                naiveNoiseLevel={results ? results.statsNaive.meanRmse : (9 - bits) * 0.03}
+                noiseMode={noiseMode}
+                bits={bits}
+                isAnimating={isAnimating}
+              />
+            )}
 
           {/* Explanation Panel */}
           <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
@@ -1588,6 +2338,7 @@ export default function RoPEOptimusSimulator() {
                 </div>
               </div>
             </div>
+          </div>
           </div>
         </div>
 

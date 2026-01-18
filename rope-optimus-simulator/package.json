@@ -13,6 +13,7 @@
     "test:slow": "playwright test --headed --workers=1"
   },
   "dependencies": {
+    "pixi.js": "^8.15.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "recharts": "^2.10.0"
