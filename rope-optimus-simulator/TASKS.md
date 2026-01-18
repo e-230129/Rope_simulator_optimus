@@ -4,14 +4,14 @@
 
 ## Now（作業中）
 
-- [ ] Reactコンポーネントのエラー修正（rope_optimus_final.jsx）
-  - 関連: docs/plans/2025-01-18-fix-optimus-errors.md
+- なし
 
-## Next（次にやる）
+## Next（次にやる・P2）
 
-- [ ] SVGグラデーション参照の修正
-- [ ] 変数スコープの問題を解消
-- [ ] アニメーション動作確認
+- [ ] Task F: exp近似切替機能（将来フェーズ）
+  - Math.exp → Taylor/Horner近似のON/OFF
+  - Math.sin/cos → LUT+補間のON/OFF
+  - 特許の「ハードウェア近似」をより忠実に再現
 
 ## Blocked（ブロック中）
 
@@ -19,6 +19,15 @@
 
 ## Done（最近完了）
 
+- [x] Task A: ヒストグラム修正（Codex担当）
+- [x] Task B: 状態整理（Claude Code担当）
+- [x] Task C: SVG id一意化・useId適用（Claude Code担当）
+- [x] Task D: README更新
+- [x] Task E: 監査報告書修正
+- [x] Playwrightテスト修正（view-modes.spec.js）
+- [x] Pixi Mode実装（DisplacementFilter方式）
+- [x] Photo Mode実装
+- [x] ドロップ検知・卵破損表現
 - [x] SSOT構造のセットアップ
 - [x] 初期ファイル配置
 

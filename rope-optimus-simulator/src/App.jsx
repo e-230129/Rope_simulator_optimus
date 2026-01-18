@@ -294,6 +294,10 @@ function useEggPhysics({
 // -----------------------------
 
 const EggObject = ({ state, pressure, stressLevel = 0, animationTime = 0 }) => {
+  // ユニークなgradient IDを生成（SVG id衝突を回避）
+  const gradientId = React.useId();
+  const eggGradientId = `eggGradient${gradientId}`;
+
   const isStressed = state === EGG_STATES.STRESSED;
   const isBroken = state === EGG_STATES.BROKEN;
 
@@ -339,11 +343,21 @@ const EggObject = ({ state, pressure, stressLevel = 0, animationTime = 0 }) => {
 
   return (
     <g transform={`translate(${vibX}, ${vibY})`}>
+      {/* 自己完結したgradient定義 */}
+      <defs>
+        <radialGradient id={eggGradientId} cx="35%" cy="30%" r="65%">
+          <stop offset="0%" stopColor="#FEF9C3"/>
+          <stop offset="30%" stopColor="#FEF3C7"/>
+          <stop offset="60%" stopColor="#FDE68A"/>
+          <stop offset="100%" stopColor="#F59E0B"/>
+        </radialGradient>
+      </defs>
+
       {/* Egg shadow */}
       <ellipse cx="3" cy="5" rx={rx * 0.9} ry={ry * 0.3} fill="#000" opacity="0.1"/>
 
       {/* Main egg body */}
-      <ellipse cx="0" cy="0" rx={rx} ry={ry} fill="url(#eggGradientDetailed)"/>
+      <ellipse cx="0" cy="0" rx={rx} ry={ry} fill={`url(#${eggGradientId})`}/>
 
       {/* Stress overlay */}
       <ellipse cx="0" cy="0" rx={rx - 1} ry={ry - 1} fill={stressColor}/>
@@ -1173,12 +1187,7 @@ function EggGripGame({ noiseLevel, naiveNoiseLevel, noiseMode = 'mixed', bits, i
           <div className="flex-1">
             <svg width="180" height="160" className="bg-slate-950 rounded-lg">
               <defs>
-                <radialGradient id="eggGradientDetailed" cx="35%" cy="30%" r="65%">
-                  <stop offset="0%" stopColor="#FEF9C3"/>
-                  <stop offset="30%" stopColor="#FEF3C7"/>
-                  <stop offset="60%" stopColor="#FDE68A"/>
-                  <stop offset="100%" stopColor="#F59E0B"/>
-                </radialGradient>
+                {/* eggGradientDetailed は EggObject 内で自己定義（useId使用） */}
                 <pattern id="gripGrid" width="10" height="10" patternUnits="userSpaceOnUse">
                   <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#1F2937" strokeWidth="0.5"/>
                 </pattern>
@@ -1351,6 +1360,8 @@ const SvgDefs = () => (
       <stop offset="100%" stopColor="#D97706" />
     </radialGradient>
 
+    {/* eggGradientDetailed は EggObject 内で useId() により自己定義 */}
+
     {/* Gold Joint Band Gradient - Like Tesla Optimus finger joints */}
     <linearGradient id="goldJointGradient" x1="0%" y1="0%" x2="0%" y2="100%">
       <stop offset="0%" stopColor="#F59E0B" />
@@ -1384,11 +1395,11 @@ const SvgDefs = () => (
 const OptimusLimb = ({ x1, y1, x2, y2, width, type = "arm" }) => {
   const dx = x2 - x1;
   const dy = y2 - y1;
-  const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+  const segmentAngle = Math.atan2(dy, dx) * (180 / Math.PI);
   const length = Math.sqrt(dx * dx + dy * dy);
 
   return (
-    <g transform={`translate(${x1}, ${y1}) rotate(${angle})`}>
+    <g transform={`translate(${x1}, ${y1}) rotate(${segmentAngle})`}>
       {/* Inner mechanical structure (black) */}
       <rect x={2} y={-width/2 + 3} width={length - 4} height={width - 6} rx={width/4} fill="#111827" />
       
@@ -1986,6 +1997,7 @@ export default function RoPEOptimusSimulator() {
   const [noiseMode, setNoiseMode] = useState('mixed'); // 'mixed' | 'naive'
   const animationRef = useRef(null);
   const runIdRef = useRef(0);
+  const MAX_SAFE_CELLS = 1_000_000;
 
   useEffect(() => {
     if (isAnimating) {
@@ -2045,6 +2057,13 @@ export default function RoPEOptimusSimulator() {
     setProgress(0);
 
     const dimEven = dim % 2 === 0 ? dim : dim - 1;
+    const totalCells = seqLen * dimEven;
+    if (totalCells > MAX_SAFE_CELLS) {
+      alert(`seqLen * dim must be <= ${MAX_SAFE_CELLS.toLocaleString()}.`);
+      setIsRunning(false);
+      setProgress(0);
+      return;
+    }
     const halfEven = Math.floor(dimEven / 2);
     const rand = seededRandom(seed);
     const { invFreq, logInvFreq } = computeInvFreq(dimEven, base);
@@ -2057,6 +2076,7 @@ export default function RoPEOptimusSimulator() {
     let sumRmseLog = 0, maxRmseLog = 0, sumFirstLog = 0, sumLastLog = 0;
     let sumRmseNaive = 0, maxRmseNaive = 0, sumFirstNaive = 0, sumLastNaive = 0;
     let packMismatch = 0;
+    let packTotal = 0;
     const { edges } = makeLogBins(-12, 0, 24);
     const histCounts = new Array(edges.length - 1).fill(0);
     const eps = 1e-12;
@@ -2102,6 +2122,9 @@ export default function RoPEOptimusSimulator() {
           const ae0 = Math.abs(dEven);
           if (ae0 > 0) histCounts[binIndexForPositive(ae0, edges)]++;
           else histCounts[0]++;
+          const ae1 = Math.abs(dOdd);
+          if (ae1 > 0) histCounts[binIndexForPositive(ae1, edges)]++;
+          else histCounts[0]++;
 
           if (showNaive) {
             const qTheta = quantizeSigned(thetaRef, scalesTheta[i], qmaxTheta);
@@ -2111,6 +2134,16 @@ export default function RoPEOptimusSimulator() {
             const ynE = xEven * cosHat - xOdd * sinHat;
             const ynO = xEven * sinHat + xOdd * cosHat;
             sumSqNaive += (ynE - yRefEven) ** 2 + (ynO - yRefOdd) ** 2;
+          }
+        }
+
+        if (usePackDemo && qLogTmp) {
+          for (let i = 0; i + 1 < halfEven; i += 2) {
+            const packed = pack2x8ToU16(qLogTmp[i], qLogTmp[i + 1]);
+            const [u0, u1] = unpackU16To2x8(packed);
+            packTotal += 2;
+            if (u0 !== qLogTmp[i]) packMismatch++;
+            if (u1 !== qLogTmp[i + 1]) packMismatch++;
           }
         }
         
@@ -2159,7 +2192,9 @@ export default function RoPEOptimusSimulator() {
       statsNaive,
       chartData,
       histData: buildHistData(histCounts, edges),
-      packMismatch
+      packMismatch,
+      packTotal,
+      packMatchRate: packTotal > 0 ? (packTotal - packMismatch) / packTotal : null
     });
     setIsRunning(false);
     setProgress(100);
@@ -2276,7 +2311,7 @@ export default function RoPEOptimusSimulator() {
             {eggView === 'pixi' ? (
               <PixiEggGripGame
                 noiseLevel={results ? results.statsLog.meanRmse : (9 - bits) * 0.02}
-                naiveNoiseLevel={results ? results.statsNaive.meanRmse : (9 - bits) * 0.03}
+                naiveNoiseLevel={results?.statsNaive?.meanRmse ?? (9 - bits) * 0.03}
                 noiseMode={noiseMode}
                 bits={bits}
                 isAnimating={isAnimating}
@@ -2284,7 +2319,7 @@ export default function RoPEOptimusSimulator() {
             ) : eggView === 'photo' ? (
               <PhotoEggGripGame
                 noiseLevel={results ? results.statsLog.meanRmse : (9 - bits) * 0.02}
-                naiveNoiseLevel={results ? results.statsNaive.meanRmse : (9 - bits) * 0.03}
+                naiveNoiseLevel={results?.statsNaive?.meanRmse ?? (9 - bits) * 0.03}
                 noiseMode={noiseMode}
                 bits={bits}
                 isAnimating={isAnimating}
@@ -2292,7 +2327,7 @@ export default function RoPEOptimusSimulator() {
             ) : (
               <EggGripGame
                 noiseLevel={results ? results.statsLog.meanRmse : (9 - bits) * 0.02}
-                naiveNoiseLevel={results ? results.statsNaive.meanRmse : (9 - bits) * 0.03}
+                naiveNoiseLevel={results?.statsNaive?.meanRmse ?? (9 - bits) * 0.03}
                 noiseMode={noiseMode}
                 bits={bits}
                 isAnimating={isAnimating}
@@ -2358,6 +2393,9 @@ export default function RoPEOptimusSimulator() {
               <span className="text-gray-400">誤差 (Δ)</span>
             </div>
           </div>
+          <div className="mt-2 text-[10px] text-gray-500 text-center">
+            ブラウザ内の相対比較。厳密なfloat32ではありません
+          </div>
         </div>
 
         {/* Controls & Results */}
@@ -2379,6 +2417,17 @@ export default function RoPEOptimusSimulator() {
                 <input type="number" value={dim} step={2}
                   onChange={e => setDim(clamp(parseInt(e.target.value) || 64, 8, 256))} 
                   className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-sm text-white mt-1"/>
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-500 uppercase tracking-wider">Quantization Mode</label>
+                <select
+                  value={quantMode}
+                  onChange={e => setQuantMode(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-sm text-white mt-1"
+                >
+                  <option value="per_dim">Per-dimension</option>
+                  <option value="global">Global</option>
+                </select>
               </div>
               <div>
                 <label className="text-[10px] text-gray-500 uppercase tracking-wider">Quantization Bits</label>
@@ -2428,6 +2477,12 @@ export default function RoPEOptimusSimulator() {
                       Mean RMSE | Drift: {results.statsNaive ? results.statsNaive.drift.toFixed(2) : '—'}x
                     </div>
                   </div>
+                </div>
+                <div className="mt-3 bg-slate-900/40 border border-slate-800 rounded-lg p-3 text-xs text-gray-400">
+                  Pack/Unpack Match Rate:{' '}
+                  <span className="text-cyan-300 font-mono">
+                    {results.packMatchRate === null ? '—' : `${(results.packMatchRate * 100).toFixed(0)}%`}
+                  </span>
                 </div>
 
                 {/* Chart */}

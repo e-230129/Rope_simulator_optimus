@@ -13,6 +13,29 @@ npm install
 npm run dev
 ```
 
+## 🧪 テスト実行
+
+```bash
+# 依存関係インストール
+npm install
+
+# Playwright ブラウザインストール（初回のみ）
+npx playwright install chromium
+
+# テスト実行
+npm test
+
+# テストレポート確認
+npx playwright show-report
+```
+
+### テスト構成
+- `tests/app.spec.js` - 基本動作テスト
+- `tests/parameters.spec.js` - パラメータ操作テスト  
+- `tests/view-modes.spec.js` - ビューモード切り替えテスト
+
+**期待結果**: 19 tests passed
+
 ## 📁 プロジェクト構造（SSOT準拠）
 
 ```

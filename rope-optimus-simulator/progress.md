@@ -5,11 +5,11 @@ AIがセッション間で状態を継承するための短期メモリ。
 
 ## Current objective
 
-- RoPE Optimus Simulator の実装エラーを修正し、動作可能な状態にする
+- P1タスク（A〜E）完了。次フェーズ（Task F: exp近似切替機能）待ち
 
 ## Current plan reference
 
-- docs/plans/2025-01-18-fix-optimus-errors.md
+- なし（現フェーズ完了）
 
 ## Current branch
 
@@ -17,18 +17,21 @@ AIがセッション間で状態を継承するための短期メモリ。
 
 ## Recent commands executed
 
-- プロジェクト初期セットアップ完了
+- npm test: 19 tests passed
+- npm run build: ビルド成功
+- Task C: SVG id一意化（useId適用）完了
 
 ## Known issues / blockers
 
-- rope_optimus_final.jsx が実行時エラーで動作しない
-- 原因: SVGグラデーション参照、変数スコープの問題の可能性
+- なし
 
 ## Notes
 
 - Tesla Patent US20260017019A1 の RoPE Mixed-Precision を可視化
 - Optimus ロボットの関節制御への応用を直感的に説明
-- Gemini 3.0 Pro のコードをベースに改良中
+- 3つのビューモード: SVG Mode, Photo Mode, Pixi Mode
+- Pixi ModeはDisplacementFilterで指変形を実現
+- EggObjectはReact.useId()で自己完結したgradient IDを持つ
 
 ---
 
